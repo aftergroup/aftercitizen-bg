@@ -1,0 +1,226 @@
+/**
+ * Baserow API client for AfterCitizen.
+ *
+ * Reads from DB 265 ("AfterCitizen | Triaditza") on db2.aftergroup.org.
+ * All calls use `?user_field_names=true` so responses match the types in types.ts.
+ */
+
+import type {
+  Category, Service, Form, FieldDef, FieldType, Section,
+  Dictionary, DictionaryEntry, FormField, RenderedForm, RenderedField,
+} from "./types";
+
+const API = import.meta.env.VITE_BASEROW_API ?? "https://db2.aftergroup.org";
+const TOKEN = import.meta.env.VITE_BASEROW_TOKEN ?? "";
+
+const T = {
+  categories: Number(import.meta.env.VITE_BASEROW_CATEGORIES_TABLE_ID ?? 2631),
+  fieldTypes: Number(import.meta.env.VITE_BASEROW_FIELD_TYPES_TABLE_ID ?? 2634),
+  sections: Number(import.meta.env.VITE_BASEROW_FORM_SECTIONS_TABLE_ID ?? 2635),
+  dictionaries: Number(import.meta.env.VITE_BASEROW_DICTIONARIES_TABLE_ID ?? 2636),
+  dictionaryEntries: Number(import.meta.env.VITE_BASEROW_DICTIONARY_ENTRIES_TABLE_ID ?? 2637),
+  templates: Number(import.meta.env.VITE_BASEROW_FORM_TEMPLATES_TABLE_ID ?? 2638),
+  fields: Number(import.meta.env.VITE_BASEROW_FIELDS_TABLE_ID ?? 2639),
+  services: Number(import.meta.env.VITE_BASEROW_SERVICES_TABLE_ID ?? 2640),
+  forms: Number(import.meta.env.VITE_BASEROW_FORMS_TABLE_ID ?? 2643),
+  formFields: Number(import.meta.env.VITE_BASEROW_FORM_FIELDS_TABLE_ID ?? 2645),
+  submissions: Number(import.meta.env.VITE_BASEROW_SUBMISSIONS_TABLE_ID ?? 2647),
+  submissionValues: Number(import.meta.env.VITE_BASEROW_SUBMISSION_VALUES_TABLE_ID ?? 2648),
+};
+
+async function list<T>(tableId: number, params: Record<string, string | number> = {}): Promise<T[]> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (TOKEN) headers.Authorization = `Token ${TOKEN}`;
+
+  const all: T[] = [];
+  let page = 1;
+  while (true) {
+    const qs = new URLSearchParams({
+      user_field_names: "true",
+      size: "200",
+      page: String(page),
+      ...Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)])),
+    });
+    const res = await fetch(`${API}/api/database/rows/table/${tableId}/?${qs}`, { headers });
+    if (!res.ok) throw new Error(`Baserow ${tableId} fetch failed: ${res.status}`);
+    const data = await res.json();
+    all.push(...data.results);
+    if (!data.next) break;
+    page += 1;
+    if (page > 20) break; // safety cap
+  }
+  return all;
+}
+
+async function getRow<T>(tableId: number, rowId: number): Promise<T> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (TOKEN) headers.Authorization = `Token ${TOKEN}`;
+  const res = await fetch(
+    `${API}/api/database/rows/table/${tableId}/${rowId}/?user_field_names=true`,
+    { headers }
+  );
+  if (!res.ok) throw new Error(`Baserow row ${rowId} fetch failed: ${res.status}`);
+  return res.json();
+}
+
+export const baserow = {
+  listCategories: () => list<Category>(T.categories),
+  listServices: () => list<Service>(T.services),
+  listForms: () => list<Form>(T.forms),
+
+  async getServiceByCode(code: string): Promise<Service | null> {
+    const rows = await list<Service>(T.services, { search: code });
+    return rows.find((r) => r["Service Code"] === code) ?? null;
+  },
+
+  async getFormByCode(code: string): Promise<Form | null> {
+    const rows = await list<Form>(T.forms, { search: code });
+    return rows.find((r) => r["Form Code"] === code) ?? null;
+  },
+
+  /**
+   * Build a fully-hydrated, render-ready schema for a single form.
+   * One-shot: pulls form fields + joins against Fields / FieldTypes / Sections / Dictionaries / Entries.
+   * In production you'd cache these (tanstack-query takes care of that upstream).
+   */
+  async getRenderedForm(formCode: string): Promise<RenderedForm | null> {
+    const form = await this.getFormByCode(formCode);
+    if (!form) return null;
+
+    const [fields, types, sections, formFields, dicts, entries] = await Promise.all([
+      list<FieldDef>(T.fields),
+      list<FieldType>(T.fieldTypes),
+      list<Section>(T.sections),
+      list<FormField>(T.formFields),
+      list<Dictionary>(T.dictionaries),
+      list<DictionaryEntry>(T.dictionaryEntries),
+    ]);
+
+    const fieldsById = new Map(fields.map((f) => [f.id, f]));
+    const typesById = new Map(types.map((t) => [t.id, t]));
+    const sectionsById = new Map(sections.map((s) => [s.id, s]));
+    const dictById = new Map(dicts.map((d) => [d.id, d]));
+    const entriesByDictId = new Map<number, DictionaryEntry[]>();
+    for (const e of entries) {
+      const dictId = e["Entry Linked Dictionary"]?.[0]?.id;
+      if (!dictId) continue;
+      if (!entriesByDictId.has(dictId)) entriesByDictId.set(dictId, []);
+      entriesByDictId.get(dictId)!.push(e);
+    }
+
+    const formFormFields = formFields
+      .filter((ff) => ff["Form Field Linked Form"]?.[0]?.id === form.id)
+      .sort((a, b) => Number(a["Form Field Order"]) - Number(b["Form Field Order"]));
+
+    const rendered: RenderedField[] = [];
+    for (const ff of formFormFields) {
+      const fieldRef = ff["Form Field Linked Field"]?.[0];
+      const sectionRef = ff["Form Field Linked Section"]?.[0];
+      if (!fieldRef || !sectionRef) continue;
+
+      const field = fieldsById.get(fieldRef.id);
+      const section = sectionsById.get(sectionRef.id);
+      if (!field || !section) continue;
+
+      const typeRef = field["Field Linked Type"]?.[0];
+      const type = typeRef ? typesById.get(typeRef.id) : undefined;
+
+      let dictionary: RenderedField["dictionary"];
+      const dictRef = field["Field Linked Dictionary"]?.[0];
+      if (dictRef) {
+        const dict = dictById.get(dictRef.id);
+        const dictEntries = entriesByDictId.get(dictRef.id) ?? [];
+        if (dict) {
+          dictionary = {
+            code: dict["Dictionary Code"],
+            entries: dictEntries
+              .sort((a, b) => (a["Entry Order"] ?? 0) - (b["Entry Order"] ?? 0))
+              .map((e) => ({ key: e["Entry Key"], labelBg: e["Entry Label BG"] })),
+          };
+        }
+      }
+
+      rendered.push({
+        formFieldId: ff.id,
+        order: Number(ff["Form Field Order"]),
+        code: field["Field Code"],
+        labelBg: ff["Form Field Label Override BG"] || field["Field Label BG"],
+        helpBg: ff["Form Field Help Override BG"] || field["Field Help BG"],
+        typeCode: type?.["Field Type Code"] ?? "text",
+        htmlInput: type?.["Field Type HTML Input"] ?? "text",
+        required: !!ff["Form Field Required"],
+        defaultValue: ff["Form Field Default Value"] ?? undefined,
+        dictionary,
+        sectionCode: section["Section Code"],
+        sectionNameBg: section["Section Name BG"],
+      });
+    }
+
+    // Group by section, preserving the section order from the first field that references it
+    const sectionOrderByCode = new Map<string, { nameBg: string; firstSeen: number }>();
+    rendered.forEach((r, i) => {
+      if (!sectionOrderByCode.has(r.sectionCode)) {
+        sectionOrderByCode.set(r.sectionCode, { nameBg: r.sectionNameBg, firstSeen: i });
+      }
+    });
+    const sectionsOrdered = [...sectionOrderByCode.entries()]
+      .sort((a, b) => a[1].firstSeen - b[1].firstSeen)
+      .map(([code, meta]) => ({
+        code,
+        nameBg: meta.nameBg,
+        fields: rendered.filter((r) => r.sectionCode === code),
+      }));
+
+    // Try to link service by matching form code (services often share code with their form)
+    const service = await this.getServiceByCode(formCode);
+
+    return { form, service: service ?? undefined, sections: sectionsOrdered };
+  },
+
+  /**
+   * Persist a submission. Creates a Submissions row + Submission Values rows.
+   * Returns the submission id so callers can pass it to the email/PDF pipeline.
+   */
+  async createSubmission(params: {
+    formId: number;
+    serviceId?: number;
+    values: Record<string, string | boolean | number>;
+  }): Promise<{ submissionId: number }> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (TOKEN) headers.Authorization = `Token ${TOKEN}`;
+
+    const subRes = await fetch(
+      `${API}/api/database/rows/table/${T.submissions}/?user_field_names=true`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          "Submission Linked Form": [params.formId],
+          ...(params.serviceId ? { "Submission Linked Service": [params.serviceId] } : {}),
+          "Submission Status": "pending",
+          "Submission Created On": new Date().toISOString(),
+        }),
+      }
+    );
+    if (!subRes.ok) throw new Error(`Submission create failed: ${subRes.status}`);
+    const submission = await subRes.json();
+    const submissionId: number = submission.id;
+
+    const valueRows = Object.entries(params.values).map(([code, value]) => ({
+      "Value Field Code": code,
+      "Value String": String(value ?? ""),
+      "Value Linked Submission": [submissionId],
+    }));
+    if (valueRows.length > 0) {
+      await fetch(
+        `${API}/api/database/rows/table/${T.submissionValues}/batch/?user_field_names=true`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ items: valueRows }),
+        }
+      );
+    }
+    return { submissionId };
+  },
+};
