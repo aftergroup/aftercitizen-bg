@@ -2,7 +2,7 @@
  * Renders any form defined in Baserow DB 265, grouped by sections.
  * Consumes the RenderedForm shape produced by baserow.getRenderedForm().
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { toast } from "sonner";
 import { Download, Eye, Loader2, Printer, X } from "lucide-react";
@@ -11,6 +11,8 @@ import { baserow } from "@/lib/baserow";
 import { hasPdfTemplate, loadPdfTemplate } from "@/lib/pdf/registry";
 import { stringifyFormValues } from "@/lib/formValues";
 import DatePicker from "@/components/DatePicker";
+import SignaturePad from "@/components/SignaturePad";
+import PdfPreviewModal from "@/components/PdfPreviewModal";
 import {
   Button, Input, Textarea, Label, Checkbox,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -20,6 +22,12 @@ interface Props {
   schema: RenderedForm;
 }
 
+function todayIso(): string {
+  const d = new Date();
+  const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 export default function DynamicFormRenderer({ schema }: Props) {
   const { form, service, sections } = schema;
   const [submitted, setSubmitted] = useState(false);
@@ -27,7 +35,6 @@ export default function DynamicFormRenderer({ schema }: Props) {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const canDownloadPdf = hasPdfTemplate(form["Form Code"]);
 
   function printPreview() {
@@ -63,8 +70,13 @@ export default function DynamicFormRenderer({ schema }: Props) {
   const defaults: Record<string, string | boolean> = {};
   for (const s of sections) {
     for (const f of s.fields) {
-      defaults[f.code] =
-        f.typeCode === "boolean" ? false : (f.defaultValue ?? "");
+      if (f.typeCode === "boolean") {
+        defaults[f.code] = false;
+      } else if (f.htmlInput === "date" && f.code.includes("signature")) {
+        defaults[f.code] = f.defaultValue || todayIso();
+      } else {
+        defaults[f.code] = f.defaultValue ?? "";
+      }
     }
   }
 
@@ -120,9 +132,10 @@ export default function DynamicFormRenderer({ schema }: Props) {
       const current = getValues();
       const stringValues = stringifyFormValues(current);
       const blob = await buildPdfBlob(stringValues);
-      setPreviewUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return URL.createObjectURL(blob);
+      const url = URL.createObjectURL(blob);
+      setPreviewUrl((old) => {
+        if (old) URL.revokeObjectURL(old);
+        return url;
       });
     } catch (err) {
       toast.error("Грешка при генериране на PDF.");
@@ -131,6 +144,19 @@ export default function DynamicFormRenderer({ schema }: Props) {
       setPreviewLoading(false);
     }
   }
+
+  function closePreview() {
+    setPreviewUrl((old) => {
+      if (old) URL.revokeObjectURL(old);
+      return null;
+    });
+  }
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
 
   if (submitted) {
     return (
@@ -167,6 +193,13 @@ export default function DynamicFormRenderer({ schema }: Props) {
 
   return (
     <>
+      {previewUrl && (
+        <PdfPreviewModal
+          url={previewUrl}
+          filename={`${form["Form Code"]}.pdf`}
+          onClose={closePreview}
+        />
+      )}
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-10 max-w-3xl mx-auto">
       <header className="space-y-3 border-b pb-6">
         <div className="text-xs font-medium text-primary uppercase tracking-wide">
@@ -208,7 +241,11 @@ export default function DynamicFormRenderer({ schema }: Props) {
               const id = `field-${f.formFieldId}`;
               const error = errors[f.code];
 
+              const isSignature =
+                f.htmlInput === "canvas" || f.typeCode === "signature";
+
               const isFullWidth =
+                isSignature ||
                 f.htmlInput === "textarea" ||
                 f.code.includes("description") ||
                 f.code.includes("address") ||
@@ -299,6 +336,19 @@ export default function DynamicFormRenderer({ schema }: Props) {
                             />
                           )}
                         />
+                      ) : isSignature ? (
+                        <Controller
+                          name={f.code}
+                          control={control}
+                          rules={{ required: f.required }}
+                          render={({ field }) => (
+                            <SignaturePad
+                              id={id}
+                              value={typeof field.value === "string" ? field.value : ""}
+                              onChange={field.onChange}
+                            />
+                          )}
+                        />
                       ) : (
                         <Input
                           id={id}
@@ -335,56 +385,6 @@ export default function DynamicFormRenderer({ schema }: Props) {
         </Button>
       </div>
     </form>
-    {previewUrl && (
-      <div
-        className="fixed inset-0 z-50 flex flex-col bg-black/60"
-        role="dialog"
-        aria-modal="true"
-        onClick={(e) => {
-          if (e.target === e.currentTarget) setPreviewUrl(null);
-        }}
-      >
-        <div className="flex items-center justify-between gap-2 bg-background px-4 py-2 border-b">
-          <span className="text-sm font-medium truncate">
-            {form["Form Code"]}.pdf
-          </span>
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={printPreview}
-            >
-              <Printer className="h-4 w-4" />
-              <span className="hidden sm:inline">Отпечатай</span>
-            </Button>
-            <a
-              href={previewUrl}
-              download={`${form["Form Code"]}.pdf`}
-              className="inline-flex h-8 items-center gap-2 rounded-md border border-input bg-background px-3 text-xs font-medium shadow-sm hover:bg-accent hover:text-accent-foreground"
-            >
-              <Download className="h-4 w-4" />
-              <span className="hidden sm:inline">Изтегли</span>
-            </a>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={() => setPreviewUrl(null)}
-              aria-label="Затвори"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-        <iframe
-          ref={previewIframeRef}
-          src={previewUrl}
-          title="PDF preview"
-          className="flex-1 w-full bg-white"
-        />
-      </div>
-    )}
     </>
   );
 }

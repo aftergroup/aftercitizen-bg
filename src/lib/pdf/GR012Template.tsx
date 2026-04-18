@@ -12,7 +12,7 @@
  * "Издаване на удостоверение за раждане — дубликат" even if the citizen
  * left it empty on screen.
  */
-import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
+import { Document, Page, View, Text, Image, StyleSheet } from "@react-pdf/renderer";
 import type { RenderedForm, RenderedField } from "@/lib/types";
 import { formatBgDate, getFieldValue, fieldValueMatches } from "./helpers";
 import "./setupFonts";
@@ -149,6 +149,20 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     minWidth: 160,
   },
+  signatureBox: {
+    width: 160,
+    height: 48,
+    borderWidth: 1,
+    borderColor: "#333",
+    borderStyle: "solid",
+    backgroundColor: "#fff",
+    padding: 2,
+  },
+  signatureImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
+  },
   helper: {
     fontSize: 8,
     color: "#555",
@@ -270,6 +284,17 @@ export default function GR012Template({ schema, values }: Props) {
   const signatureDate =
     findField(schema, "signature_date") ??
     firstFieldMatching(schema, (f) => f.code.includes("date") && !f.code.includes("birth"));
+  const signatureField =
+    findField(schema, "signature") ??
+    firstFieldMatching(
+      schema,
+      (f) => f.typeCode === "signature" || f.htmlInput === "canvas",
+    );
+  const signatureValue = getFieldValue(values, signatureField);
+  const signatureIsImage =
+    typeof signatureValue === "string" && signatureValue.startsWith("data:image");
+
+  const todaysDateBg = formatBgDate(new Date().toISOString().slice(0, 10));
 
   const fullName = [
     getFieldValue(values, firstName),
@@ -464,14 +489,19 @@ export default function GR012Template({ schema, values }: Props) {
             <View style={[styles.footerField, { marginTop: 6 }]}>
               <Text style={styles.label}>Дата :</Text>
               <Text style={[styles.fillLine, { width: 120, flex: 0 }]}>
-                {formatBgDate(getFieldValue(values, signatureDate)) ||
-                  formatBgDate(new Date().toISOString().slice(0, 10))}
+                {formatBgDate(getFieldValue(values, signatureDate)) || todaysDateBg}
               </Text>
             </View>
           </View>
           <View style={styles.footerField}>
             <Text style={styles.label}>Подпис :</Text>
-            <Text style={[styles.fillLine, { width: 160, flex: 0 }]}> </Text>
+            {signatureIsImage ? (
+              <View style={styles.signatureBox}>
+                <Image src={signatureValue} style={styles.signatureImage} />
+              </View>
+            ) : (
+              <View style={styles.signatureBox} />
+            )}
           </View>
         </View>
 
