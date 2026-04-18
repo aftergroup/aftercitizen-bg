@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { toast } from "sonner";
-import { Download, Eye, Loader2 } from "lucide-react";
+import { Download, Eye, Loader2, Printer, X } from "lucide-react";
 import type { RenderedForm } from "@/lib/types";
 import { baserow } from "@/lib/baserow";
 import { hasPdfTemplate, loadPdfTemplate } from "@/lib/pdf/registry";
@@ -36,6 +36,36 @@ export default function DynamicFormRenderer({ schema }: Props) {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const canDownloadPdf = hasPdfTemplate(form["Form Code"]);
+
+  function printPreview() {
+    const win = previewIframeRef.current?.contentWindow;
+    if (!win) return;
+    try {
+      win.focus();
+      win.print();
+    } catch {
+      toast.error("Печатът не е наличен в този браузър.");
+    }
+  }
+
+  useEffect(() => {
+    if (!previewUrl) return;
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
+
+  useEffect(() => {
+    if (!previewUrl) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPreviewUrl(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [previewUrl]);
 
   const defaults: Record<string, string | boolean> = {};
   for (const s of sections) {
