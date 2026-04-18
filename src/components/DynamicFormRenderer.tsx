@@ -2,7 +2,7 @@
  * Renders any form defined in Baserow DB 265, grouped by sections.
  * Consumes the RenderedForm shape produced by baserow.getRenderedForm().
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { toast } from "sonner";
 import { Download, Eye, Loader2 } from "lucide-react";
@@ -11,6 +11,8 @@ import { baserow } from "@/lib/baserow";
 import { hasPdfTemplate, loadPdfTemplate } from "@/lib/pdf/registry";
 import { stringifyFormValues } from "@/lib/formValues";
 import DatePicker from "@/components/DatePicker";
+import SignaturePad from "@/components/SignaturePad";
+import PdfPreviewModal from "@/components/PdfPreviewModal";
 import {
   Button, Input, Textarea, Label, Checkbox,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -20,19 +22,31 @@ interface Props {
   schema: RenderedForm;
 }
 
+function todayIso(): string {
+  const d = new Date();
+  const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 export default function DynamicFormRenderer({ schema }: Props) {
   const { form, service, sections } = schema;
   const [submitted, setSubmitted] = useState(false);
   const [submittedValues, setSubmittedValues] = useState<Record<string, string> | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const canDownloadPdf = hasPdfTemplate(form["Form Code"]);
 
   const defaults: Record<string, string | boolean> = {};
   for (const s of sections) {
     for (const f of s.fields) {
-      defaults[f.code] =
-        f.typeCode === "boolean" ? false : (f.defaultValue ?? "");
+      if (f.typeCode === "boolean") {
+        defaults[f.code] = false;
+      } else if (f.htmlInput === "date" && f.code.includes("signature")) {
+        defaults[f.code] = f.defaultValue || todayIso();
+      } else {
+        defaults[f.code] = f.defaultValue ?? "";
+      }
     }
   }
 
@@ -89,13 +103,10 @@ export default function DynamicFormRenderer({ schema }: Props) {
       const stringValues = stringifyFormValues(current);
       const blob = await buildPdfBlob(stringValues);
       const url = URL.createObjectURL(blob);
-      const win = window.open(url, "_blank", "noopener,noreferrer");
-      // Browsers that block the popup (or revoke the URL immediately) get
-      // a toast hint; otherwise free the URL after the tab has loaded it.
-      if (!win) {
-        toast.error("Изскачащият прозорец е блокиран — разрешете го за сайта.");
-      }
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setPreviewUrl((old) => {
+        if (old) URL.revokeObjectURL(old);
+        return url;
+      });
     } catch (err) {
       toast.error("Грешка при генериране на PDF.");
       console.error(err);
@@ -103,6 +114,19 @@ export default function DynamicFormRenderer({ schema }: Props) {
       setPreviewLoading(false);
     }
   }
+
+  function closePreview() {
+    setPreviewUrl((old) => {
+      if (old) URL.revokeObjectURL(old);
+      return null;
+    });
+  }
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
 
   if (submitted) {
     return (
@@ -138,6 +162,14 @@ export default function DynamicFormRenderer({ schema }: Props) {
   }
 
   return (
+    <>
+      {previewUrl && (
+        <PdfPreviewModal
+          url={previewUrl}
+          filename={`${form["Form Code"]}.pdf`}
+          onClose={closePreview}
+        />
+      )}
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-10 max-w-3xl mx-auto">
       <header className="space-y-3 border-b pb-6">
         <div className="text-xs font-medium text-primary uppercase tracking-wide">
@@ -179,7 +211,11 @@ export default function DynamicFormRenderer({ schema }: Props) {
               const id = `field-${f.formFieldId}`;
               const error = errors[f.code];
 
+              const isSignature =
+                f.htmlInput === "canvas" || f.typeCode === "signature";
+
               const isFullWidth =
+                isSignature ||
                 f.htmlInput === "textarea" ||
                 f.code.includes("description") ||
                 f.code.includes("address") ||
@@ -270,6 +306,19 @@ export default function DynamicFormRenderer({ schema }: Props) {
                             />
                           )}
                         />
+                      ) : isSignature ? (
+                        <Controller
+                          name={f.code}
+                          control={control}
+                          rules={{ required: f.required }}
+                          render={({ field }) => (
+                            <SignaturePad
+                              id={id}
+                              value={typeof field.value === "string" ? field.value : ""}
+                              onChange={field.onChange}
+                            />
+                          )}
+                        />
                       ) : (
                         <Input
                           id={id}
@@ -306,5 +355,6 @@ export default function DynamicFormRenderer({ schema }: Props) {
         </Button>
       </div>
     </form>
+    </>
   );
 }
