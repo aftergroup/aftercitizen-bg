@@ -9,6 +9,8 @@ import { Download, Eye, Loader2, Printer, X } from "lucide-react";
 import type { RenderedForm } from "@/lib/types";
 import { baserow } from "@/lib/baserow";
 import { hasPdfTemplate, loadPdfTemplate } from "@/lib/pdf/registry";
+import { stringifyFormValues } from "@/lib/formValues";
+import DatePicker from "@/components/DatePicker";
 import {
   Button, Input, Textarea, Label, Checkbox,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -71,13 +73,12 @@ export default function DynamicFormRenderer({ schema }: Props) {
 
   async function onSubmit(values: Record<string, string | boolean>) {
     try {
+      const stringValues = stringifyFormValues(values);
       const { submissionId } = await baserow.createSubmission({
         formId: form.id,
         serviceId: service?.id,
-        values,
+        values: stringValues,
       });
-      const stringValues: Record<string, string> = {};
-      for (const [k, v] of Object.entries(values)) stringValues[k] = String(v ?? "");
       setSubmittedValues(stringValues);
       toast.success(`Заявлението е подадено. Референтен номер: #${submissionId}`);
       setSubmitted(true);
@@ -117,8 +118,7 @@ export default function DynamicFormRenderer({ schema }: Props) {
     setPreviewLoading(true);
     try {
       const current = getValues();
-      const stringValues: Record<string, string> = {};
-      for (const [k, v] of Object.entries(current)) stringValues[k] = String(v ?? "");
+      const stringValues = stringifyFormValues(current);
       const blob = await buildPdfBlob(stringValues);
       setPreviewUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
@@ -285,11 +285,19 @@ export default function DynamicFormRenderer({ schema }: Props) {
                           )}
                         />
                       ) : f.htmlInput === "file" ? (
-                        <Input
-                          id={id}
-                          type="file"
-                          accept="image/*,application/pdf"
-                          {...register(f.code)}
+                        <Input id={id} type="file" {...register(f.code)} />
+                      ) : f.htmlInput === "date" ? (
+                        <Controller
+                          name={f.code}
+                          control={control}
+                          rules={{ required: f.required }}
+                          render={({ field }) => (
+                            <DatePicker
+                              id={id}
+                              value={typeof field.value === "string" ? field.value : ""}
+                              onChange={field.onChange}
+                            />
+                          )}
                         />
                       ) : (
                         <Input
