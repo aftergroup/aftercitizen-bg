@@ -131,10 +131,11 @@ const styles = StyleSheet.create({
     height: 9,
     borderWidth: 1,
     borderColor: "#333",
-    textAlign: "center",
-    fontSize: 8,
-    lineHeight: 1,
-    paddingTop: 0.5,
+    padding: 1.2,
+  },
+  checkboxFill: {
+    flex: 1,
+    backgroundColor: "#111",
   },
   footer: {
     marginTop: 22,
@@ -183,7 +184,11 @@ function firstFieldMatching(
 }
 
 function Checkbox({ checked }: { checked: boolean }) {
-  return <Text style={styles.checkbox}>{checked ? "✕" : " "}</Text>;
+  return (
+    <View style={styles.checkbox}>
+      {checked ? <View style={styles.checkboxFill} /> : null}
+    </View>
+  );
 }
 
 export default function GR012Template({ schema, values }: Props) {
