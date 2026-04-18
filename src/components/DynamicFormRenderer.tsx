@@ -2,10 +2,10 @@
  * Renders any form defined in Baserow DB 265, grouped by sections.
  * Consumes the RenderedForm shape produced by baserow.getRenderedForm().
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { toast } from "sonner";
-import { Download, Eye, Loader2 } from "lucide-react";
+import { Download, Eye, Loader2, Printer, X } from "lucide-react";
 import type { RenderedForm } from "@/lib/types";
 import { baserow } from "@/lib/baserow";
 import { hasPdfTemplate, loadPdfTemplate } from "@/lib/pdf/registry";
@@ -24,7 +24,39 @@ export default function DynamicFormRenderer({ schema }: Props) {
   const [submittedValues, setSubmittedValues] = useState<Record<string, string> | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const canDownloadPdf = hasPdfTemplate(form["Form Code"]);
+
+  function printPreview() {
+    const win = previewIframeRef.current?.contentWindow;
+    if (!win) return;
+    try {
+      win.focus();
+      win.print();
+    } catch {
+      toast.error("Печатът не е наличен в този браузър.");
+    }
+  }
+
+  useEffect(() => {
+    if (!previewUrl) return;
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
+
+  useEffect(() => {
+    if (!previewUrl) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPreviewUrl(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [previewUrl]);
 
   const defaults: Record<string, string | boolean> = {};
   for (const s of sections) {
@@ -88,14 +120,10 @@ export default function DynamicFormRenderer({ schema }: Props) {
       const stringValues: Record<string, string> = {};
       for (const [k, v] of Object.entries(current)) stringValues[k] = String(v ?? "");
       const blob = await buildPdfBlob(stringValues);
-      const url = URL.createObjectURL(blob);
-      const win = window.open(url, "_blank", "noopener,noreferrer");
-      // Browsers that block the popup (or revoke the URL immediately) get
-      // a toast hint; otherwise free the URL after the tab has loaded it.
-      if (!win) {
-        toast.error("Изскачащият прозорец е блокиран — разрешете го за сайта.");
-      }
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return URL.createObjectURL(blob);
+      });
     } catch (err) {
       toast.error("Грешка при генериране на PDF.");
       console.error(err);
@@ -138,6 +166,7 @@ export default function DynamicFormRenderer({ schema }: Props) {
   }
 
   return (
+    <>
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-10 max-w-3xl mx-auto">
       <header className="space-y-3 border-b pb-6">
         <div className="text-xs font-medium text-primary uppercase tracking-wide">
@@ -256,7 +285,12 @@ export default function DynamicFormRenderer({ schema }: Props) {
                           )}
                         />
                       ) : f.htmlInput === "file" ? (
-                        <Input id={id} type="file" {...register(f.code)} />
+                        <Input
+                          id={id}
+                          type="file"
+                          accept="image/*,application/pdf"
+                          {...register(f.code)}
+                        />
                       ) : (
                         <Input
                           id={id}
@@ -293,5 +327,56 @@ export default function DynamicFormRenderer({ schema }: Props) {
         </Button>
       </div>
     </form>
+    {previewUrl && (
+      <div
+        className="fixed inset-0 z-50 flex flex-col bg-black/60"
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) setPreviewUrl(null);
+        }}
+      >
+        <div className="flex items-center justify-between gap-2 bg-background px-4 py-2 border-b">
+          <span className="text-sm font-medium truncate">
+            {form["Form Code"]}.pdf
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={printPreview}
+            >
+              <Printer className="h-4 w-4" />
+              <span className="hidden sm:inline">Отпечатай</span>
+            </Button>
+            <a
+              href={previewUrl}
+              download={`${form["Form Code"]}.pdf`}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-input bg-background px-3 text-xs font-medium shadow-sm hover:bg-accent hover:text-accent-foreground"
+            >
+              <Download className="h-4 w-4" />
+              <span className="hidden sm:inline">Изтегли</span>
+            </a>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => setPreviewUrl(null)}
+              aria-label="Затвори"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+        <iframe
+          ref={previewIframeRef}
+          src={previewUrl}
+          title="PDF preview"
+          className="flex-1 w-full bg-white"
+        />
+      </div>
+    )}
+    </>
   );
 }
