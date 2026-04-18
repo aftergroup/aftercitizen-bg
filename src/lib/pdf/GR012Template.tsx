@@ -197,6 +197,16 @@ function firstFieldMatching(
   return undefined;
 }
 
+function formatBgDate(value: string): string {
+  if (!value) return "";
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (iso) {
+    const [, y, m, d] = iso;
+    return `${d}.${m}.${y}`;
+  }
+  return value;
+}
+
 function Checkbox({ checked }: { checked: boolean }) {
   return <Text style={styles.checkbox}>{checked ? "✕" : " "}</Text>;
 }
@@ -205,8 +215,8 @@ export default function GR012Template({ schema, values }: Props) {
   const { form, service } = schema;
 
   const firstName = findField(schema, "applicant_first_name");
-  const middleName = findField(schema, "applicant_middle_name");
-  const lastName = findField(schema, "applicant_last_name");
+  const fatherName = findField(schema, "applicant_father_name");
+  const familyName = findField(schema, "applicant_family_name");
   const birthDate =
     findField(schema, "applicant_birth_date") ??
     firstFieldMatching(schema, (f) => f.code.includes("birth_date"));
@@ -272,11 +282,13 @@ export default function GR012Template({ schema, values }: Props) {
 
   const fullName = [
     getValue(values, firstName),
-    getValue(values, middleName),
-    getValue(values, lastName),
+    getValue(values, fatherName),
+    getValue(values, familyName),
   ]
     .filter(Boolean)
     .join(" ");
+
+  const birthDateValue = formatBgDate(getValue(values, birthDate));
 
   const speedValue = serviceSpeed ? getValue(values, serviceSpeed).toLowerCase() : "";
   const formatValue = documentFormat ? getValue(values, documentFormat).toLowerCase() : "";
@@ -309,12 +321,12 @@ export default function GR012Template({ schema, values }: Props) {
 
         <View style={styles.row}>
           <Text style={styles.label}>От :</Text>
-          <Text style={styles.fillLine}>{fullName}</Text>
+          <Text style={[styles.fillLine, { flex: 2.75 }]}>{fullName}</Text>
           <Text style={styles.label}>
             {birthDate ? birthDate.labelBg : "Дата на раждане"}:
           </Text>
-          <Text style={[styles.fillLine, { flex: 0, width: 90 }]}>
-            {getValue(values, birthDate)}
+          <Text style={[styles.fillLine, { flex: 1 }]}>
+            {birthDateValue}
           </Text>
         </View>
         <Text style={styles.helper}>(име, презиме, фамилия)</Text>
