@@ -95,11 +95,12 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   requestBody: {
-    minHeight: 72,
+    minHeight: 24,
     borderBottom: "1pt dotted #333",
     paddingHorizontal: 4,
     paddingVertical: 3,
     marginBottom: 10,
+    justifyContent: "flex-end",
   },
   sectionHeader: {
     marginTop: 10,
