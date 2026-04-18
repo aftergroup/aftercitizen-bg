@@ -191,11 +191,16 @@ export default function DynamicFormRenderer({ schema }: Props) {
         </section>
       ))}
 
-      <div className="flex items-center justify-between border-t pt-6">
-        <div className="text-xs text-muted-foreground">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 border-t pt-6">
+        <div className="text-xs text-muted-foreground order-2 md:order-1">
           Полета, маркирани с <span className="text-destructive">*</span>, са задължителни
         </div>
-        <Button type="submit" size="lg" disabled={isSubmitting}>
+        <Button
+          type="submit"
+          size="lg"
+          disabled={isSubmitting}
+          className="w-full md:w-auto order-1 md:order-2"
+        >
           {isSubmitting ? "Подаване…" : "Подай заявлението"}
         </Button>
       </div>
