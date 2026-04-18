@@ -137,15 +137,18 @@ const styles = StyleSheet.create({
   },
   footer: {
     marginTop: 22,
+    gap: 8,
+  },
+  footerRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 16,
+    gap: 24,
+    alignItems: "flex-end",
   },
   footerField: {
     flexDirection: "row",
-    gap: 4,
+    gap: 6,
     alignItems: "flex-end",
-    minWidth: 160,
+    flex: 1,
   },
   helper: {
     fontSize: 8,
@@ -162,25 +165,74 @@ const styles = StyleSheet.create({
   },
 });
 
+function formatDateBg(raw: string): string {
+  if (!raw) return "";
+  // ISO date from the HTML date input: YYYY-MM-DD[Thh:mm:ss…]
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[3]}.${iso[2]}.${iso[1]}`;
+  // Already DD.MM.YYYY or DD/MM/YYYY or DD-MM-YYYY — normalise separators.
+  const dmy = raw.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+  if (dmy) {
+    const d = dmy[1].padStart(2, "0");
+    const m = dmy[2].padStart(2, "0");
+    return `${d}.${m}.${dmy[3]}`;
+  }
+  const parsed = new Date(raw);
+  if (!isNaN(parsed.getTime())) {
+    const d = String(parsed.getDate()).padStart(2, "0");
+    const m = String(parsed.getMonth() + 1).padStart(2, "0");
+    return `${d}.${m}.${parsed.getFullYear()}`;
+  }
+  return raw;
+}
+
+function isDateField(field: RenderedField | undefined): boolean {
+  if (!field) return false;
+  return (
+    field.typeCode === "date" ||
+    field.htmlInput === "date" ||
+    /date|birth/.test(field.code)
+  );
+}
+
 function getValue(
   values: Record<string, string>,
   field: RenderedField | undefined,
 ): string {
   if (!field) return "";
   const raw = values[field.code];
+  let resolved: string;
   if (raw !== undefined && raw !== "" && raw !== "false") {
     if (field.dictionary) {
       const entry = field.dictionary.entries.find((e) => e.key === raw);
-      return entry?.labelBg ?? String(raw);
+      resolved = entry?.labelBg ?? String(raw);
+    } else {
+      resolved = String(raw);
     }
-    return String(raw);
+  } else {
+    resolved = field.defaultValue ?? "";
   }
-  return field.defaultValue ?? "";
+  return isDateField(field) ? formatDateBg(resolved) : resolved;
 }
 
 function findField(schema: RenderedForm, code: string): RenderedField | undefined {
   for (const s of schema.sections) {
     const f = s.fields.find((x) => x.code === code);
+    if (f) return f;
+  }
+  return undefined;
+}
+
+function findByLabel(
+  schema: RenderedForm,
+  needles: string[],
+): RenderedField | undefined {
+  const lowered = needles.map((n) => n.toLowerCase());
+  for (const s of schema.sections) {
+    const f = s.fields.find((x) => {
+      const l = (x.labelBg ?? "").toLowerCase();
+      return lowered.some((n) => l.includes(n));
+    });
     if (f) return f;
   }
   return undefined;
@@ -204,9 +256,28 @@ function Checkbox({ checked }: { checked: boolean }) {
 export default function GR012Template({ schema, values }: Props) {
   const { form, service } = schema;
 
-  const firstName = findField(schema, "applicant_first_name");
-  const middleName = findField(schema, "applicant_middle_name");
-  const lastName = findField(schema, "applicant_last_name");
+  const firstName =
+    findField(schema, "applicant_first_name") ??
+    findField(schema, "applicant_given_name") ??
+    firstFieldMatching(schema, (f) => /first_name|given_name/.test(f.code)) ??
+    findByLabel(schema, ["Собствено", "Име"]);
+  const middleName =
+    findField(schema, "applicant_middle_name") ??
+    findField(schema, "applicant_father_name") ??
+    findField(schema, "applicant_fathers_name") ??
+    findField(schema, "applicant_patronymic") ??
+    firstFieldMatching(schema, (f) =>
+      /middle_name|father_name|fathers_name|patronymic|presime/.test(f.code)
+    ) ??
+    findByLabel(schema, ["Бащино", "Презиме"]);
+  const lastName =
+    findField(schema, "applicant_last_name") ??
+    findField(schema, "applicant_family_name") ??
+    findField(schema, "applicant_surname") ??
+    firstFieldMatching(schema, (f) =>
+      /last_name|family_name|surname|familia/.test(f.code)
+    ) ??
+    findByLabel(schema, ["Фамилно", "Фамилия"]);
   const birthDate =
     findField(schema, "applicant_birth_date") ??
     firstFieldMatching(schema, (f) => f.code.includes("birth_date"));
@@ -455,24 +526,25 @@ export default function GR012Template({ schema, values }: Props) {
         )}
 
         <View style={styles.footer}>
-          <View>
+          <View style={styles.footerRow}>
             <View style={styles.footerField}>
               <Text style={styles.label}>гр./с.</Text>
-              <Text style={[styles.fillLine, { width: 120, flex: 0 }]}>
+              <Text style={styles.fillLine}>
                 {getValue(values, signaturePlace) || "София"}
               </Text>
             </View>
-            <View style={[styles.footerField, { marginTop: 6 }]}>
+            <View style={styles.footerField}>
               <Text style={styles.label}>Дата :</Text>
-              <Text style={[styles.fillLine, { width: 120, flex: 0 }]}>
-                {getValue(values, signatureDate) ||
-                  new Date().toLocaleDateString("bg-BG")}
+              <Text style={styles.fillLine}>
+                {getValue(values, signatureDate) || formatDateBg(new Date().toISOString())}
               </Text>
             </View>
           </View>
-          <View style={styles.footerField}>
-            <Text style={styles.label}>Подпис :</Text>
-            <Text style={[styles.fillLine, { width: 160, flex: 0 }]}> </Text>
+          <View style={styles.footerRow}>
+            <View style={[styles.footerField, { flex: 2 }]}>
+              <Text style={styles.label}>Подпис :</Text>
+              <Text style={styles.fillLine}> </Text>
+            </View>
           </View>
         </View>
 
