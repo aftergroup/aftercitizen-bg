@@ -24,6 +24,7 @@ const registryLoader: Loader = () => import("./Grao2022RegistryTemplate");
 const civilStatusLoader: Loader = () => import("./GR012Template");
 const app14Loader: Loader = () => import("./App14PostoyanenTemplate");
 const zaverkaLoader: Loader = () => import("./ZaverkaDrugaDrzhavaTemplate");
+const raUtShellLoader: Loader = () => import("./RaUtShellTemplate");
 
 const loaders: Record<string, Loader> = {
   // GRAO-2022-civilstatus: ЗАЯВЛЕНИЕ за административна услуга гражданска
@@ -48,6 +49,42 @@ const loaders: Record<string, Loader> = {
 
   // ZAVERKA-DRUG-DRAZHAVA: заверка на документи по гражданско състояние за чужбина.
   "GR-030": zaverkaLoader,
+
+  // RA-UT-SHELL: universal ЗАЯВЛЕНИЕ до Главния архитект shell used by 33
+  // forms across отдел „Устройство на територията" (SI-* and UT-*).
+  "SI-001": raUtShellLoader,
+  "SI-002": raUtShellLoader,
+  "SI-003": raUtShellLoader,
+  "SI-004": raUtShellLoader,
+  "SI-005": raUtShellLoader,
+  "SI-007": raUtShellLoader,
+  "SI-020": raUtShellLoader,
+  "SI-021": raUtShellLoader,
+  "SI-022": raUtShellLoader,
+  "UT-002": raUtShellLoader,
+  "UT-003": raUtShellLoader,
+  "UT-004": raUtShellLoader,
+  "UT-005-1": raUtShellLoader,
+  "UT-005-2": raUtShellLoader,
+  "UT-007": raUtShellLoader,
+  "UT-008": raUtShellLoader,
+  "UT-009": raUtShellLoader,
+  "UT-010": raUtShellLoader,
+  "UT-011-1": raUtShellLoader,
+  "UT-013": raUtShellLoader,
+  "UT-014-1": raUtShellLoader,
+  "UT-014-2": raUtShellLoader,
+  "UT-015-1": raUtShellLoader,
+  "UT-015-2": raUtShellLoader,
+  "UT-016": raUtShellLoader,
+  "UT-017": raUtShellLoader,
+  "UT-018": raUtShellLoader,
+  "UT-027": raUtShellLoader,
+  "UT-031": raUtShellLoader,
+  "UT-032": raUtShellLoader,
+  "UT-033": raUtShellLoader,
+  "UT-043": raUtShellLoader,
+  "UT-044": raUtShellLoader,
 };
 
 export function hasPdfTemplate(formCode: string): boolean {
