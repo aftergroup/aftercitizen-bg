@@ -5,8 +5,10 @@
 import { useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { toast } from "sonner";
+import { Download, Loader2 } from "lucide-react";
 import type { RenderedForm } from "@/lib/types";
 import { baserow } from "@/lib/baserow";
+import { hasPdfTemplate, loadPdfTemplate } from "@/lib/pdf/registry";
 import {
   Button, Input, Textarea, Label, Checkbox,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -19,6 +21,9 @@ interface Props {
 export default function DynamicFormRenderer({ schema }: Props) {
   const { form, service, sections } = schema;
   const [submitted, setSubmitted] = useState(false);
+  const [submittedValues, setSubmittedValues] = useState<Record<string, string> | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const canDownloadPdf = hasPdfTemplate(form["Form Code"]);
 
   const defaults: Record<string, string | boolean> = {};
   for (const s of sections) {
@@ -38,11 +43,37 @@ export default function DynamicFormRenderer({ schema }: Props) {
         serviceId: service?.id,
         values,
       });
+      const stringValues: Record<string, string> = {};
+      for (const [k, v] of Object.entries(values)) stringValues[k] = String(v ?? "");
+      setSubmittedValues(stringValues);
       toast.success(`Заявлението е подадено. Референтен номер: #${submissionId}`);
       setSubmitted(true);
     } catch (err) {
       toast.error("Грешка при подаване на заявлението. Моля опитайте отново.");
       console.error(err);
+    }
+  }
+
+  async function downloadPdf() {
+    if (!canDownloadPdf || !submittedValues) return;
+    setPdfLoading(true);
+    try {
+      const [PdfTemplate, { pdf }, fileSaverMod] = await Promise.all([
+        loadPdfTemplate(form["Form Code"]),
+        import("@react-pdf/renderer"),
+        import("file-saver"),
+      ]);
+      if (!PdfTemplate) throw new Error("no template");
+      const saveAs = fileSaverMod.default ?? fileSaverMod.saveAs;
+      const blob = await pdf(
+        <PdfTemplate schema={schema} values={submittedValues} />
+      ).toBlob();
+      saveAs(blob, `${form["Form Code"]}.pdf`);
+    } catch (err) {
+      toast.error("Грешка при генериране на PDF.");
+      console.error(err);
+    } finally {
+      setPdfLoading(false);
     }
   }
 
@@ -60,9 +91,21 @@ export default function DynamicFormRenderer({ schema }: Props) {
           </a>
           .
         </p>
-        <Button variant="outline" onClick={() => window.location.reload()}>
-          Подай ново заявление
-        </Button>
+        <div className="flex flex-wrap gap-3 justify-center pt-2">
+          {canDownloadPdf && (
+            <Button onClick={downloadPdf} disabled={pdfLoading}>
+              {pdfLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              {pdfLoading ? "Генериране…" : "Изтегли PDF"}
+            </Button>
+          )}
+          <Button variant="outline" onClick={() => window.location.reload()}>
+            Подай ново заявление
+          </Button>
+        </div>
       </div>
     );
   }
@@ -191,11 +234,16 @@ export default function DynamicFormRenderer({ schema }: Props) {
         </section>
       ))}
 
-      <div className="flex items-center justify-between border-t pt-6">
-        <div className="text-xs text-muted-foreground">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 border-t pt-6">
+        <div className="text-xs text-muted-foreground order-2 md:order-1">
           Полета, маркирани с <span className="text-destructive">*</span>, са задължителни
         </div>
-        <Button type="submit" size="lg" disabled={isSubmitting}>
+        <Button
+          type="submit"
+          size="lg"
+          disabled={isSubmitting}
+          className="w-full md:w-auto order-1 md:order-2"
+        >
           {isSubmitting ? "Подаване…" : "Подай заявлението"}
         </Button>
       </div>
