@@ -52,21 +52,49 @@ async function list<T>(tableId: number, params: Record<string, string | number> 
   return all;
 }
 
-async function getRow<T>(tableId: number, rowId: number): Promise<T> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (TOKEN) headers.Authorization = `Token ${TOKEN}`;
-  const res = await fetch(
-    `${API}/api/database/rows/table/${tableId}/${rowId}/?user_field_names=true`,
-    { headers }
-  );
-  if (!res.ok) throw new Error(`Baserow row ${rowId} fetch failed: ${res.status}`);
-  return res.json();
+export interface ReferenceData {
+  fields: FieldDef[];
+  types: FieldType[];
+  sections: Section[];
+  dicts: Dictionary[];
+  entries: DictionaryEntry[];
 }
 
 export const baserow = {
   listCategories: () => list<Category>(T.categories),
   listServices: () => list<Service>(T.services),
   listForms: () => list<Form>(T.forms),
+
+  listFields: () => list<FieldDef>(T.fields),
+  listFieldTypes: () => list<FieldType>(T.fieldTypes),
+  listSections: () => list<Section>(T.sections),
+  listDictionaries: () => list<Dictionary>(T.dictionaries),
+  listDictionaryEntries: () => list<DictionaryEntry>(T.dictionaryEntries),
+
+  /**
+   * Fetch all reference tables in parallel. These are small, stable, form-agnostic
+   * lookups — callers should cache the result aggressively (staleTime of an hour+).
+   */
+  async getReferenceData(): Promise<ReferenceData> {
+    const [fields, types, sections, dicts, entries] = await Promise.all([
+      baserow.listFields(),
+      baserow.listFieldTypes(),
+      baserow.listSections(),
+      baserow.listDictionaries(),
+      baserow.listDictionaryEntries(),
+    ]);
+    return { fields, types, sections, dicts, entries };
+  },
+
+  /**
+   * Pull just the FormFields that belong to a specific form. Uses Baserow's
+   * server-side link-row filter so we fetch ~20 rows instead of all ~2,800.
+   */
+  listFormFieldsForForm(formId: number): Promise<FormField[]> {
+    return list<FormField>(T.formFields, {
+      "filter__Form Field Linked Form__link_row_has": formId,
+    });
+  },
 
   async getServiceByCode(code: string): Promise<Service | null> {
     const rows = await list<Service>(T.services, { search: code });
@@ -79,22 +107,17 @@ export const baserow = {
   },
 
   /**
-   * Build a fully-hydrated, render-ready schema for a single form.
-   * One-shot: pulls form fields + joins against Fields / FieldTypes / Sections / Dictionaries / Entries.
-   * In production you'd cache these (tanstack-query takes care of that upstream).
+   * Pure join: stitch pre-fetched reference data + form-specific rows into
+   * the render-ready schema. Split out so the data-fetching layer (tanstack-query)
+   * can cache each piece independently.
    */
-  async getRenderedForm(formCode: string): Promise<RenderedForm | null> {
-    const form = await this.getFormByCode(formCode);
-    if (!form) return null;
-
-    const [fields, types, sections, formFields, dicts, entries] = await Promise.all([
-      list<FieldDef>(T.fields),
-      list<FieldType>(T.fieldTypes),
-      list<Section>(T.sections),
-      list<FormField>(T.formFields),
-      list<Dictionary>(T.dictionaries),
-      list<DictionaryEntry>(T.dictionaryEntries),
-    ]);
+  buildRenderedForm(
+    form: Form,
+    formFields: FormField[],
+    reference: ReferenceData,
+    service?: Service,
+  ): RenderedForm {
+    const { fields, types, sections, dicts, entries } = reference;
 
     const fieldsById = new Map(fields.map((f) => [f.id, f]));
     const typesById = new Map(types.map((t) => [t.id, t]));
@@ -108,9 +131,9 @@ export const baserow = {
       entriesByDictId.get(dictId)!.push(e);
     }
 
-    const formFormFields = formFields
-      .filter((ff) => ff["Form Field Linked Form"]?.[0]?.id === form.id)
-      .sort((a, b) => Number(a["Form Field Order"]) - Number(b["Form Field Order"]));
+    const formFormFields = [...formFields].sort(
+      (a, b) => Number(a["Form Field Order"]) - Number(b["Form Field Order"])
+    );
 
     const rendered: RenderedField[] = [];
     for (const ff of formFormFields) {
@@ -156,7 +179,7 @@ export const baserow = {
       });
     }
 
-    // Group by section, preserving the section order from the first field that references it
+    // Group by section, preserving the order the section first appears in.
     const sectionOrderByCode = new Map<string, { nameBg: string; firstSeen: number }>();
     rendered.forEach((r, i) => {
       if (!sectionOrderByCode.has(r.sectionCode)) {
@@ -171,10 +194,22 @@ export const baserow = {
         fields: rendered.filter((r) => r.sectionCode === code),
       }));
 
-    // Try to link service by matching form code (services often share code with their form)
-    const service = await this.getServiceByCode(formCode);
+    return { form, service, sections: sectionsOrdered };
+  },
 
-    return { form, service: service ?? undefined, sections: sectionsOrdered };
+  /**
+   * Convenience one-shot fetcher — kept for callers that don't need
+   * the fine-grained cache the split fetchers enable.
+   */
+  async getRenderedForm(formCode: string): Promise<RenderedForm | null> {
+    const [form, service, reference] = await Promise.all([
+      baserow.getFormByCode(formCode),
+      baserow.getServiceByCode(formCode),
+      baserow.getReferenceData(),
+    ]);
+    if (!form) return null;
+    const formFields = await baserow.listFormFieldsForForm(form.id);
+    return baserow.buildRenderedForm(form, formFields, reference, service ?? undefined);
   },
 
   /**
