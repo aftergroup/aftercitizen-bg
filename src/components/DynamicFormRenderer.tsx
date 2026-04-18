@@ -2,10 +2,10 @@
  * Renders any form defined in Baserow DB 265, grouped by sections.
  * Consumes the RenderedForm shape produced by baserow.getRenderedForm().
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { toast } from "sonner";
-import { Download, Eye, Loader2, X } from "lucide-react";
+import { Download, Eye, Loader2, Printer, X } from "lucide-react";
 import type { RenderedForm } from "@/lib/types";
 import { baserow } from "@/lib/baserow";
 import { hasPdfTemplate, loadPdfTemplate } from "@/lib/pdf/registry";
@@ -25,7 +25,19 @@ export default function DynamicFormRenderer({ schema }: Props) {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const canDownloadPdf = hasPdfTemplate(form["Form Code"]);
+
+  function printPreview() {
+    const win = previewIframeRef.current?.contentWindow;
+    if (!win) return;
+    try {
+      win.focus();
+      win.print();
+    } catch {
+      toast.error("Печатът не е наличен в този браузър.");
+    }
+  }
 
   useEffect(() => {
     if (!previewUrl) return;
@@ -273,7 +285,12 @@ export default function DynamicFormRenderer({ schema }: Props) {
                           )}
                         />
                       ) : f.htmlInput === "file" ? (
-                        <Input id={id} type="file" {...register(f.code)} />
+                        <Input
+                          id={id}
+                          type="file"
+                          accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.odt,.ods,.txt,.rtf"
+                          {...register(f.code)}
+                        />
                       ) : (
                         <Input
                           id={id}
@@ -324,13 +341,22 @@ export default function DynamicFormRenderer({ schema }: Props) {
             {form["Form Code"]}.pdf
           </span>
           <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={printPreview}
+            >
+              <Printer className="h-4 w-4" />
+              <span className="hidden sm:inline">Отпечатай</span>
+            </Button>
             <a
               href={previewUrl}
               download={`${form["Form Code"]}.pdf`}
               className="inline-flex h-8 items-center gap-2 rounded-md border border-input bg-background px-3 text-xs font-medium shadow-sm hover:bg-accent hover:text-accent-foreground"
             >
               <Download className="h-4 w-4" />
-              Изтегли
+              <span className="hidden sm:inline">Изтегли</span>
             </a>
             <Button
               type="button"
@@ -344,6 +370,7 @@ export default function DynamicFormRenderer({ schema }: Props) {
           </div>
         </div>
         <iframe
+          ref={previewIframeRef}
           src={previewUrl}
           title="PDF preview"
           className="flex-1 w-full bg-white"
