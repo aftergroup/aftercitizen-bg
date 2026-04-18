@@ -5,7 +5,7 @@
 import { useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { toast } from "sonner";
-import { Download, Loader2 } from "lucide-react";
+import { Download, Eye, Loader2 } from "lucide-react";
 import type { RenderedForm } from "@/lib/types";
 import { baserow } from "@/lib/baserow";
 import { hasPdfTemplate, loadPdfTemplate } from "@/lib/pdf/registry";
@@ -23,6 +23,7 @@ export default function DynamicFormRenderer({ schema }: Props) {
   const [submitted, setSubmitted] = useState(false);
   const [submittedValues, setSubmittedValues] = useState<Record<string, string> | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const canDownloadPdf = hasPdfTemplate(form["Form Code"]);
 
   const defaults: Record<string, string | boolean> = {};
@@ -33,7 +34,7 @@ export default function DynamicFormRenderer({ schema }: Props) {
     }
   }
 
-  const { control, register, handleSubmit, formState: { errors, isSubmitting } } =
+  const { control, register, handleSubmit, getValues, formState: { errors, isSubmitting } } =
     useForm<Record<string, string | boolean>>({ defaultValues: defaults });
 
   async function onSubmit(values: Record<string, string | boolean>) {
@@ -54,26 +55,52 @@ export default function DynamicFormRenderer({ schema }: Props) {
     }
   }
 
+  async function buildPdfBlob(values: Record<string, string>): Promise<Blob> {
+    const [PdfTemplate, { pdf }] = await Promise.all([
+      loadPdfTemplate(form["Form Code"]),
+      import("@react-pdf/renderer"),
+    ]);
+    if (!PdfTemplate) throw new Error("no template");
+    return pdf(<PdfTemplate schema={schema} values={values} />).toBlob();
+  }
+
   async function downloadPdf() {
     if (!canDownloadPdf || !submittedValues) return;
     setPdfLoading(true);
     try {
-      const [PdfTemplate, { pdf }, fileSaverMod] = await Promise.all([
-        loadPdfTemplate(form["Form Code"]),
-        import("@react-pdf/renderer"),
-        import("file-saver"),
-      ]);
-      if (!PdfTemplate) throw new Error("no template");
+      const fileSaverMod = await import("file-saver");
       const saveAs = fileSaverMod.default ?? fileSaverMod.saveAs;
-      const blob = await pdf(
-        <PdfTemplate schema={schema} values={submittedValues} />
-      ).toBlob();
+      const blob = await buildPdfBlob(submittedValues);
       saveAs(blob, `${form["Form Code"]}.pdf`);
     } catch (err) {
       toast.error("Грешка при генериране на PDF.");
       console.error(err);
     } finally {
       setPdfLoading(false);
+    }
+  }
+
+  async function previewPdf() {
+    if (!canDownloadPdf) return;
+    setPreviewLoading(true);
+    try {
+      const current = getValues();
+      const stringValues: Record<string, string> = {};
+      for (const [k, v] of Object.entries(current)) stringValues[k] = String(v ?? "");
+      const blob = await buildPdfBlob(stringValues);
+      const url = URL.createObjectURL(blob);
+      const win = window.open(url, "_blank", "noopener,noreferrer");
+      // Browsers that block the popup (or revoke the URL immediately) get
+      // a toast hint; otherwise free the URL after the tab has loaded it.
+      if (!win) {
+        toast.error("Изскачащият прозорец е блокиран — разрешете го за сайта.");
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      toast.error("Грешка при генериране на PDF.");
+      console.error(err);
+    } finally {
+      setPreviewLoading(false);
     }
   }
 
@@ -112,7 +139,7 @@ export default function DynamicFormRenderer({ schema }: Props) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-10 max-w-3xl mx-auto">
-      <header className="space-y-2 border-b pb-6">
+      <header className="space-y-3 border-b pb-6">
         <div className="text-xs font-medium text-primary uppercase tracking-wide">
           {form["Form Code"]}
         </div>
@@ -123,6 +150,24 @@ export default function DynamicFormRenderer({ schema }: Props) {
           <p className="text-sm text-muted-foreground">
             Правно основание: {service["Service Legal Basis"]}
           </p>
+        )}
+        {canDownloadPdf && (
+          <div className="pt-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={previewPdf}
+              disabled={previewLoading}
+            >
+              {previewLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Eye className="h-4 w-4" />
+              )}
+              {previewLoading ? "Генериране…" : "Преглед на PDF"}
+            </Button>
+          </div>
         )}
       </header>
 
