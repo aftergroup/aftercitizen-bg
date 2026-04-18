@@ -288,7 +288,7 @@ export default function DynamicFormRenderer({ schema }: Props) {
                         <Input
                           id={id}
                           type="file"
-                          accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.odt,.ods,.txt,.rtf"
+                          accept="image/*,application/pdf"
                           {...register(f.code)}
                         />
                       ) : (
