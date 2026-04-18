@@ -14,6 +14,7 @@
  */
 import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
 import type { RenderedForm, RenderedField } from "@/lib/types";
+import { formatBgDate, getFieldValue, fieldValueMatches } from "./helpers";
 import "./setupFonts";
 
 interface Props {
@@ -162,22 +163,6 @@ const styles = StyleSheet.create({
   },
 });
 
-function getValue(
-  values: Record<string, string>,
-  field: RenderedField | undefined,
-): string {
-  if (!field) return "";
-  const raw = values[field.code];
-  if (raw !== undefined && raw !== "" && raw !== "false") {
-    if (field.dictionary) {
-      const entry = field.dictionary.entries.find((e) => e.key === raw);
-      return entry?.labelBg ?? String(raw);
-    }
-    return String(raw);
-  }
-  return field.defaultValue ?? "";
-}
-
 function findField(schema: RenderedForm, code: string): RenderedField | undefined {
   for (const s of schema.sections) {
     const f = s.fields.find((x) => x.code === code);
@@ -195,16 +180,6 @@ function firstFieldMatching(
     if (f) return f;
   }
   return undefined;
-}
-
-function formatBgDate(value: string): string {
-  if (!value) return "";
-  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
-  if (iso) {
-    const [, y, m, d] = iso;
-    return `${d}.${m}.${y}`;
-  }
-  return value;
 }
 
 function Checkbox({ checked }: { checked: boolean }) {
@@ -260,11 +235,22 @@ export default function GR012Template({ schema, values }: Props) {
     findField(schema, "service_speed") ??
     firstFieldMatching(schema, (f) => f.code.includes("speed"));
   const documentFormat =
+    findField(schema, "document_form") ??
     findField(schema, "document_format") ??
-    firstFieldMatching(schema, (f) => f.code.includes("format"));
+    firstFieldMatching(
+      schema,
+      (f) => f.code.includes("document_form") || f.code.includes("format"),
+    );
   const deliveryChannel =
+    findField(schema, "delivery_method") ??
     findField(schema, "delivery_channel") ??
-    firstFieldMatching(schema, (f) => f.code.includes("delivery"));
+    firstFieldMatching(
+      schema,
+      (f) =>
+        (f.code.includes("delivery") || f.code.includes("channel")) &&
+        !f.code.includes("address") &&
+        !f.code.includes("email"),
+    );
 
   const deliveryAddress =
     findField(schema, "delivery_address") ??
@@ -281,25 +267,21 @@ export default function GR012Template({ schema, values }: Props) {
     firstFieldMatching(schema, (f) => f.code.includes("date") && !f.code.includes("birth"));
 
   const fullName = [
-    getValue(values, firstName),
-    getValue(values, fatherName),
-    getValue(values, familyName),
+    getFieldValue(values, firstName),
+    getFieldValue(values, fatherName),
+    getFieldValue(values, familyName),
   ]
     .filter(Boolean)
     .join(" ");
 
-  const birthDateValue = formatBgDate(getValue(values, birthDate));
+  const birthDateValue = formatBgDate(getFieldValue(values, birthDate));
 
-  const speedValue = serviceSpeed ? getValue(values, serviceSpeed).toLowerCase() : "";
-  const formatValue = documentFormat ? getValue(values, documentFormat).toLowerCase() : "";
-  const deliveryValue = deliveryChannel ? getValue(values, deliveryChannel).toLowerCase() : "";
-
-  const speedMatches = (...keys: string[]) =>
-    keys.some((k) => speedValue.includes(k));
-  const formatMatches = (...keys: string[]) =>
-    keys.some((k) => formatValue.includes(k));
-  const deliveryMatches = (...keys: string[]) =>
-    keys.some((k) => deliveryValue.includes(k));
+  const speedMatches = (...tokens: string[]) =>
+    fieldValueMatches(values, serviceSpeed, tokens);
+  const formatMatches = (...tokens: string[]) =>
+    fieldValueMatches(values, documentFormat, tokens);
+  const deliveryMatches = (...tokens: string[]) =>
+    fieldValueMatches(values, deliveryChannel, tokens);
 
   const serviceTitle =
     service?.["Service Title BG"] ?? form["Form Title BG"] ?? "";
@@ -334,7 +316,7 @@ export default function GR012Template({ schema, values }: Props) {
         {egn && (
           <View style={styles.row}>
             <Text style={styles.label}>{egn.labelBg}:</Text>
-            <Text style={styles.fillLine}>{getValue(values, egn)}</Text>
+            <Text style={styles.fillLine}>{getFieldValue(values, egn)}</Text>
           </View>
         )}
 
@@ -342,7 +324,7 @@ export default function GR012Template({ schema, values }: Props) {
           <Text style={styles.label}>
             {address ? address.labelBg : "Адрес"}:
           </Text>
-          <Text style={styles.fillLine}>{getValue(values, address)}</Text>
+          <Text style={styles.fillLine}>{getFieldValue(values, address)}</Text>
         </View>
 
         <View style={styles.row}>
@@ -350,13 +332,13 @@ export default function GR012Template({ schema, values }: Props) {
             {phone ? phone.labelBg : "Телефон"}:
           </Text>
           <Text style={[styles.fillLine, { flex: 1 }]}>
-            {getValue(values, phone)}
+            {getFieldValue(values, phone)}
           </Text>
           <Text style={styles.label}>
             {email ? email.labelBg : "E-mail"}:
           </Text>
           <Text style={[styles.fillLine, { flex: 1.6 }]}>
-            {getValue(values, email)}
+            {getFieldValue(values, email)}
           </Text>
         </View>
 
@@ -365,7 +347,7 @@ export default function GR012Template({ schema, values }: Props) {
           Моля, да ми бъде извършена следната услуга:
         </Text>
         <View style={styles.requestBody}>
-          <Text>{getValue(values, requestSubject) || serviceTitle}</Text>
+          <Text>{getFieldValue(values, requestSubject) || serviceTitle}</Text>
         </View>
 
         <Text style={[styles.label, styles.sectionHeader]}>
@@ -378,7 +360,7 @@ export default function GR012Template({ schema, values }: Props) {
             {attachmentFee ? attachmentFee.labelBg : "Документ за платена такса за услугата"}
           </Text>
           <Text style={styles.fillLine}>
-            {getValue(values, attachmentFee)}
+            {getFieldValue(values, attachmentFee)}
           </Text>
         </View>
         <Text style={[styles.helper, { textAlign: "left", marginLeft: 16 }]}>
@@ -391,7 +373,7 @@ export default function GR012Template({ schema, values }: Props) {
             {attachmentLegal ? attachmentLegal.labelBg : "Документ доказващ правно основание"}:
           </Text>
           <Text style={styles.fillLine}>
-            {getValue(values, attachmentLegal)}
+            {getFieldValue(values, attachmentLegal)}
           </Text>
         </View>
 
@@ -401,7 +383,7 @@ export default function GR012Template({ schema, values }: Props) {
             {attachmentOther ? attachmentOther.labelBg : "Други документи"}:
           </Text>
           <Text style={styles.fillLine}>
-            {getValue(values, attachmentOther)}
+            {getFieldValue(values, attachmentOther)}
           </Text>
         </View>
 
@@ -458,7 +440,7 @@ export default function GR012Template({ schema, values }: Props) {
         {deliveryAddress && (
           <>
             <Text style={styles.fillBoxLarge}>
-              {getValue(values, deliveryAddress)}
+              {getFieldValue(values, deliveryAddress)}
             </Text>
             <Text style={styles.helper}>
               (посочва се общинска администрация или адрес, според избрания начина на получаване)
@@ -471,14 +453,14 @@ export default function GR012Template({ schema, values }: Props) {
             <View style={styles.footerField}>
               <Text style={styles.label}>гр./с.</Text>
               <Text style={[styles.fillLine, { width: 120, flex: 0 }]}>
-                {getValue(values, signaturePlace) || "София"}
+                {getFieldValue(values, signaturePlace) || "София"}
               </Text>
             </View>
             <View style={[styles.footerField, { marginTop: 6 }]}>
               <Text style={styles.label}>Дата :</Text>
               <Text style={[styles.fillLine, { width: 120, flex: 0 }]}>
-                {getValue(values, signatureDate) ||
-                  new Date().toLocaleDateString("bg-BG")}
+                {formatBgDate(getFieldValue(values, signatureDate)) ||
+                  formatBgDate(new Date().toISOString().slice(0, 10))}
               </Text>
             </View>
           </View>
