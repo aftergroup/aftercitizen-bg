@@ -9,9 +9,11 @@ import {
   SortableHeader,
   useTableControls,
 } from "@/components/admin/tableControls";
+import { RowActions } from "@/components/admin/RowActions";
 import { Drawer } from "@/components/Drawer";
-import { Button } from "@/components/ui";
-import { Check, Eye, EyeOff, Pencil } from "lucide-react";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { Button, Input } from "@/components/ui";
+import { Check, Eye, EyeOff, Plus } from "lucide-react";
 import type { Form } from "@/lib/types";
 
 type FormSortKey = "code" | "title" | "status" | "visible" | "modified";
@@ -19,6 +21,8 @@ type FormSortKey = "code" | "title" | "status" | "visible" | "modified";
 export default function AdminForms() {
   const { municipalityId } = useCurrentMunicipality();
   const [editing, setEditing] = useState<Form | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState<Form | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["admin", "forms", municipalityId],
@@ -40,11 +44,16 @@ export default function AdminForms() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Формуляри</h1>
-        <p className="text-sm text-muted-foreground">
-          Управление на видимостта на формулярите за граждани.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">Формуляри</h1>
+          <p className="text-sm text-muted-foreground">
+            Управление на видимостта на формулярите за граждани.
+          </p>
+        </div>
+        <Button onClick={() => setCreating(true)}>
+          <Plus className="h-4 w-4" /> Нов формуляр
+        </Button>
       </div>
 
       <SearchBar
@@ -65,7 +74,7 @@ export default function AdminForms() {
                 <SortableHeader label="Статус" sortKey="status" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
                 <SortableHeader label="Видим" sortKey="visible" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
                 <SortableHeader label="Последно" sortKey="modified" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
-                <th className="px-4 py-2 font-medium text-right">Действия</th>
+                <th className="px-4 py-2 font-medium text-right w-28">Действия</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -82,13 +91,11 @@ export default function AdminForms() {
                   <td className="px-4 py-3 text-muted-foreground">
                     {formatDate(f["Form Last Modified On"])}
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => setEditing(f)}
-                      className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-                    >
-                      <Pencil className="h-3.5 w-3.5" /> Редактирай
-                    </button>
+                  <td className="px-4 py-3">
+                    <RowActions
+                      onEdit={() => setEditing(f)}
+                      onDelete={() => setDeleting(f)}
+                    />
                   </td>
                 </tr>
               ))}
@@ -111,66 +118,146 @@ export default function AdminForms() {
         </div>
       )}
 
-      <EditFormDrawer form={editing} onClose={() => setEditing(null)} />
+      <FormDrawer
+        open={!!editing || creating}
+        form={editing}
+        municipalityId={municipalityId}
+        onClose={() => {
+          setEditing(null);
+          setCreating(false);
+        }}
+      />
+
+      <DeleteFormDialog form={deleting} onClose={() => setDeleting(null)} />
     </div>
   );
 }
 
-function EditFormDrawer({ form, onClose }: { form: Form | null; onClose: () => void }) {
+function FormDrawer({
+  open,
+  form,
+  municipalityId,
+  onClose,
+}: {
+  open: boolean;
+  form: Form | null;
+  municipalityId: number;
+  onClose: () => void;
+}) {
   const queryClient = useQueryClient();
-  const [isVisible, setIsVisible] = useState<boolean>(true);
-  const [notes, setNotes] = useState<string>("");
+  const isCreate = !form;
+
+  const [code, setCode] = useState("");
+  const [titleBg, setTitleBg] = useState("");
+  const [titleEn, setTitleEn] = useState("");
+  const [isVisible, setIsVisible] = useState(true);
+  const [notes, setNotes] = useState("");
 
   useEffect(() => {
-    if (form) {
-      setIsVisible(form["Form Is Visible"] ?? true);
-      setNotes(form["Form Notes"] ?? "");
+    if (open) {
+      setCode(form?.["Form Code"] ?? "");
+      setTitleBg(form?.["Form Title BG"] ?? "");
+      setTitleEn(form?.["Form Title EN"] ?? "");
+      setIsVisible(form?.["Form Is Visible"] ?? true);
+      setNotes(form?.["Form Notes"] ?? "");
     }
-  }, [form]);
+  }, [open, form]);
 
   const mutation = useMutation({
-    mutationFn: (patch: Partial<Form>) => {
-      if (!form) throw new Error("No form selected");
-      return baserow.updateForm(form.id, patch);
+    mutationFn: async () => {
+      const payload: Partial<Form> = {
+        "Form Code": code,
+        "Form Title BG": titleBg,
+        "Form Title EN": titleEn || undefined,
+        "Form Is Visible": isVisible,
+        "Form Notes": notes,
+      };
+      if (isCreate) {
+        return baserow.createForm({
+          ...payload,
+          "Form Linked Municipality": [{ id: municipalityId, value: "" }],
+        });
+      }
+      return baserow.updateForm(form!.id, payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "forms"] });
-      toast.success("Формулярът е обновен");
+      toast.success(isCreate ? "Формулярът е създаден" : "Формулярът е обновен");
       onClose();
     },
     onError: (err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
-      toast.error(`Грешка при обновяване: ${msg}`);
+      toast.error(`Грешка: ${msg}`);
     },
   });
 
-  const isDirty =
-    !!form &&
-    ((form["Form Is Visible"] ?? true) !== isVisible ||
-      (form["Form Notes"] ?? "") !== notes);
+  const canSave = code.trim() && titleBg.trim();
 
   return (
     <Drawer
-      open={!!form}
+      open={open}
       onClose={onClose}
-      title={form ? `Редактиране · ${form["Form Code"]}` : ""}
-      description={form?.["Form Title BG"]}
+      title={isCreate ? "Нов формуляр" : `Редактиране · ${form?.["Form Code"] ?? ""}`}
+      description={isCreate ? "Добавяне на формуляр към района" : form?.["Form Title BG"]}
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={mutation.isPending}>
             Отказ
           </Button>
           <Button
-            disabled={!isDirty || mutation.isPending}
-            onClick={() => mutation.mutate({ "Form Is Visible": isVisible, "Form Notes": notes })}
+            disabled={!canSave || mutation.isPending}
+            onClick={() => mutation.mutate()}
           >
-            {mutation.isPending ? "Запазване…" : "Запази"}
+            {mutation.isPending ? "Запазване…" : isCreate ? "Създай" : "Запази"}
           </Button>
         </>
       }
     >
-      {form && (
-        <div className="space-y-6 max-w-xl">
+      <div className="grid md:grid-cols-2 gap-6">
+        <Section title="Основна информация">
+          <FieldRow label="Код *">
+            <Input
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="напр. GR-042"
+            />
+          </FieldRow>
+          <FieldRow label="Наименование BG *">
+            <Input
+              value={titleBg}
+              onChange={(e) => setTitleBg(e.target.value)}
+              placeholder="Издаване на…"
+            />
+          </FieldRow>
+          <FieldRow label="Title EN">
+            <Input
+              value={titleEn}
+              onChange={(e) => setTitleEn(e.target.value)}
+              placeholder="Optional English title"
+            />
+          </FieldRow>
+          {!isCreate && form?.["Form Blank PDF R2 URL"] && (
+            <FieldRow label="PDF образец">
+              <a
+                href={form["Form Blank PDF R2 URL"]}
+                target="_blank"
+                rel="noopener"
+                className="text-sm text-primary hover:underline"
+              >
+                Отвори
+              </a>
+            </FieldRow>
+          )}
+          {!isCreate && (
+            <FieldRow label="Статус">
+              <span className="text-sm text-muted-foreground">
+                {getStatus(form!) ?? "—"}
+              </span>
+            </FieldRow>
+          )}
+        </Section>
+
+        <div className="space-y-6">
           <Section title="Видимост">
             <button
               type="button"
@@ -200,63 +287,79 @@ function EditFormDrawer({ form, onClose }: { form: Form | null; onClose: () => v
             </button>
           </Section>
 
-          <Section title="Информация">
-            <ReadOnly label="Код" value={form["Form Code"]} />
-            <ReadOnly label="Наименование BG" value={form["Form Title BG"]} />
-            {form["Form Title EN"] && (
-              <ReadOnly label="Title EN" value={form["Form Title EN"]} />
-            )}
-            <ReadOnly label="Статус" value={getStatus(form)} />
-            {form["Form Blank PDF R2 URL"] && (
-              <ReadOnly
-                label="PDF образец"
-                value={
-                  <a
-                    href={form["Form Blank PDF R2 URL"]}
-                    target="_blank"
-                    rel="noopener"
-                    className="text-primary hover:underline"
-                  >
-                    Отвори
-                  </a>
-                }
-              />
-            )}
-          </Section>
-
           <Section title="Вътрешни бележки">
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              rows={4}
+              rows={6}
               className="w-full rounded-md border bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               placeholder="Бележки за администраторите…"
             />
           </Section>
         </div>
-      )}
+      </div>
     </Drawer>
+  );
+}
+
+function DeleteFormDialog({ form, onClose }: { form: Form | null; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: () => baserow.deleteForm(form!.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "forms"] });
+      toast.success("Формулярът е изтрит");
+      onClose();
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Грешка: ${msg}`);
+    },
+  });
+
+  return (
+    <ConfirmDialog
+      open={!!form}
+      onClose={onClose}
+      onConfirm={() => mutation.mutate()}
+      title="Изтриване на формуляр"
+      description={
+        form ? (
+          <>
+            Сигурни ли сте, че искате да изтриете <b>{form["Form Code"]}</b>
+            {form["Form Title BG"] ? (
+              <>
+                {" "}
+                — <i>{form["Form Title BG"]}</i>
+              </>
+            ) : null}
+            ? Действието не може да бъде върнато.
+          </>
+        ) : null
+      }
+      destructive
+      confirmLabel="Изтрий"
+      isPending={mutation.isPending}
+    />
   );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {title}
       </h3>
-      <div className="space-y-2">{children}</div>
+      <div className="space-y-3">{children}</div>
     </div>
   );
 }
 
-function ReadOnly({ label, value }: { label: string; value?: React.ReactNode }) {
+function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-[140px_1fr] gap-3 text-sm">
-      <div className="text-muted-foreground">{label}</div>
-      <div className="min-w-0 break-words">
-        {value ? <span>{value}</span> : <span className="text-muted-foreground">—</span>}
-      </div>
+    <div className="space-y-1.5">
+      <label className="text-xs font-medium text-muted-foreground">{label}</label>
+      {children}
     </div>
   );
 }

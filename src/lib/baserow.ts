@@ -33,6 +33,40 @@ const T = {
   municipalDepartments: Number(import.meta.env.VITE_BASEROW_MUNICIPAL_DEPARTMENTS_TABLE_ID ?? 2658),
 };
 
+function authHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (TOKEN) headers.Authorization = `Token ${TOKEN}`;
+  return headers;
+}
+
+async function createRow<T>(tableId: number, payload: Partial<T>): Promise<T> {
+  const res = await fetch(
+    `${API}/api/database/rows/table/${tableId}/?user_field_names=true`,
+    { method: "POST", headers: authHeaders(), body: JSON.stringify(payload) },
+  );
+  if (!res.ok) throw new Error(`Baserow ${tableId} create failed: ${res.status}`);
+  return (await res.json()) as T;
+}
+
+async function updateRow<T>(tableId: number, id: number, patch: Partial<T>): Promise<T> {
+  const res = await fetch(
+    `${API}/api/database/rows/table/${tableId}/${id}/?user_field_names=true`,
+    { method: "PATCH", headers: authHeaders(), body: JSON.stringify(patch) },
+  );
+  if (!res.ok) throw new Error(`Baserow ${tableId} update failed: ${res.status}`);
+  return (await res.json()) as T;
+}
+
+async function deleteRow(tableId: number, id: number): Promise<void> {
+  const res = await fetch(`${API}/api/database/rows/table/${tableId}/${id}/`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok && res.status !== 204) {
+    throw new Error(`Baserow ${tableId} delete failed: ${res.status}`);
+  }
+}
+
 async function list<T>(tableId: number, params: Record<string, string | number> = {}): Promise<T[]> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (TOKEN) headers.Authorization = `Token ${TOKEN}`;
@@ -87,27 +121,21 @@ export const baserow = {
     return rows.find((u) => u.auth0_user_id === auth0Id) ?? null;
   },
 
-  async createAdminUser(payload: Partial<AdminUser>): Promise<AdminUser> {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (TOKEN) headers.Authorization = `Token ${TOKEN}`;
-    const res = await fetch(
-      `${API}/api/database/rows/table/${T.adminUsers}/?user_field_names=true`,
-      { method: "POST", headers, body: JSON.stringify(payload) }
-    );
-    if (!res.ok) throw new Error(`Admin user create failed: ${res.status}`);
-    return (await res.json()) as AdminUser;
-  },
+  createAdminUser: (payload: Partial<AdminUser>) => createRow<AdminUser>(T.adminUsers, payload),
+  updateAdminUser: (id: number, patch: Partial<AdminUser>) =>
+    updateRow<AdminUser>(T.adminUsers, id, patch),
+  deleteAdminUser: (id: number) => deleteRow(T.adminUsers, id),
 
-  async updateAdminUser(id: number, patch: Partial<AdminUser>): Promise<AdminUser> {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (TOKEN) headers.Authorization = `Token ${TOKEN}`;
-    const res = await fetch(
-      `${API}/api/database/rows/table/${T.adminUsers}/${id}/?user_field_names=true`,
-      { method: "PATCH", headers, body: JSON.stringify(patch) }
-    );
-    if (!res.ok) throw new Error(`Admin user update failed: ${res.status}`);
-    return (await res.json()) as AdminUser;
-  },
+  createUserRole: (payload: Partial<UserRole>) => createRow<UserRole>(T.userRoles, payload),
+  updateUserRole: (id: number, patch: Partial<UserRole>) =>
+    updateRow<UserRole>(T.userRoles, id, patch),
+  deleteUserRole: (id: number) => deleteRow(T.userRoles, id),
+
+  createMunicipalDepartment: (payload: Partial<MunicipalDepartment>) =>
+    createRow<MunicipalDepartment>(T.municipalDepartments, payload),
+  updateMunicipalDepartment: (id: number, patch: Partial<MunicipalDepartment>) =>
+    updateRow<MunicipalDepartment>(T.municipalDepartments, id, patch),
+  deleteMunicipalDepartment: (id: number) => deleteRow(T.municipalDepartments, id),
 
   /** List forms scoped to a municipality (or all if id is omitted). */
   listFormsForMunicipality(municipalityId?: number) {
@@ -118,16 +146,9 @@ export const baserow = {
     return list<Form>(T.forms, params);
   },
 
-  async updateForm(id: number, patch: Partial<Form>): Promise<Form> {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (TOKEN) headers.Authorization = `Token ${TOKEN}`;
-    const res = await fetch(
-      `${API}/api/database/rows/table/${T.forms}/${id}/?user_field_names=true`,
-      { method: "PATCH", headers, body: JSON.stringify(patch) }
-    );
-    if (!res.ok) throw new Error(`Form update failed: ${res.status}`);
-    return (await res.json()) as Form;
-  },
+  createForm: (payload: Partial<Form>) => createRow<Form>(T.forms, payload),
+  updateForm: (id: number, patch: Partial<Form>) => updateRow<Form>(T.forms, id, patch),
+  deleteForm: (id: number) => deleteRow(T.forms, id),
 
   /**
    * List submissions scoped to a single municipality. Uses Baserow's
@@ -141,16 +162,18 @@ export const baserow = {
   },
 
   async getSubmission(id: number): Promise<Submission | null> {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (TOKEN) headers.Authorization = `Token ${TOKEN}`;
     const res = await fetch(
       `${API}/api/database/rows/table/${T.submissions}/${id}/?user_field_names=true`,
-      { headers }
+      { headers: authHeaders() },
     );
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`Submission ${id} fetch failed: ${res.status}`);
     return (await res.json()) as Submission;
   },
+
+  updateSubmission: (id: number, patch: Partial<Submission>) =>
+    updateRow<Submission>(T.submissions, id, patch),
+  deleteSubmission: (id: number) => deleteRow(T.submissions, id),
 
   listFields: () => list<FieldDef>(T.fields),
   listFieldTypes: () => list<FieldType>(T.fieldTypes),

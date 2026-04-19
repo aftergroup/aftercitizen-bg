@@ -47,7 +47,7 @@ export function Drawer({ open, onClose, title, description, footer, children }: 
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`absolute top-0 right-0 h-full w-full md:w-[60vw] bg-white shadow-xl flex flex-col transform transition-transform duration-200 ${
+        className={`absolute top-0 right-0 h-full w-full bg-white shadow-xl flex flex-col transform transition-transform duration-200 ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
       >
