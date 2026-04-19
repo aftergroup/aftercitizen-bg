@@ -26,7 +26,7 @@ import {
 } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import { baserow } from "@/lib/baserow";
-import type { AdminUser } from "@/lib/types";
+import type { AdminUser, UserRole } from "@/lib/types";
 
 const DEFAULT_ROLE_NAME = "Citizen";
 
@@ -35,6 +35,14 @@ export interface UserSyncResult {
   isSyncing: boolean;
   isAuthenticated: boolean;
   baserowUser: AdminUser | null;
+  /**
+   * Role name of the signed-in user, resolved from the linked User Roles
+   * row. Baserow's link_row fields return the PRIMARY field of the target
+   * table in `.value` — User Roles's primary field is the `user_role_id`
+   * autonumber, so `.value` comes back as a numeric string. We resolve
+   * by id here so consumers can compare names directly.
+   */
+  roleName: string;
   isRestricted: boolean;
 }
 
@@ -43,6 +51,7 @@ const DEFAULT_UNAUTH_STATE: UserSyncResult = {
   isSyncing: false,
   isAuthenticated: false,
   baserowUser: null,
+  roleName: "",
   isRestricted: false,
 };
 
@@ -52,6 +61,7 @@ export function UserSyncProvider({ children }: { children: ReactNode }) {
   const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth0();
   const [isSyncing, setIsSyncing] = useState(false);
   const [baserowUser, setBaserowUser] = useState<AdminUser | null>(null);
+  const [roles, setRoles] = useState<UserRole[]>([]);
 
   useEffect(() => {
     if (!isAuthenticated || !user?.sub) {
@@ -64,7 +74,11 @@ export function UserSyncProvider({ children }: { children: ReactNode }) {
 
     (async () => {
       try {
-        const existing = await baserow.findAdminUserByAuth0Id(user.sub!);
+        const [existing, rolesList] = await Promise.all([
+          baserow.findAdminUserByAuth0Id(user.sub!),
+          baserow.listUserRoles(),
+        ]);
+        if (!cancelled) setRoles(rolesList);
 
         if (existing) {
           const patch: Partial<AdminUser> = {};
@@ -87,8 +101,7 @@ export function UserSyncProvider({ children }: { children: ReactNode }) {
           // immediately manage their profile and their own submissions.
           // Staff promotion happens in the admin panel (role change +
           // `User Is Active` flip).
-          const roles = await baserow.listUserRoles();
-          const citizenRole = roles.find(
+          const citizenRole = rolesList.find(
             (r) => r["User Role Name"] === DEFAULT_ROLE_NAME,
           );
           const created = await baserow.createAdminUser({
@@ -126,16 +139,29 @@ export function UserSyncProvider({ children }: { children: ReactNode }) {
     user?.nickname,
   ]);
 
-  const value = useMemo<UserSyncResult>(
-    () => ({
+  const value = useMemo<UserSyncResult>(() => {
+    const linkedRoleId = baserowUser?.["User Linked User Role"]?.[0]?.id;
+    const linkedRoleValue =
+      baserowUser?.["User Linked User Role"]?.[0]?.value ?? "";
+    const resolvedByLookup = linkedRoleId
+      ? roles.find((r) => r.id === linkedRoleId)?.["User Role Name"]
+      : undefined;
+    // Baserow's default link_row response puts the target's primary field
+    // in `.value`. If an admin has switched the User Roles primary to
+    // "User Role Name" the value is already the name; otherwise (current
+    // schema) it's the autonumber string and we must resolve via the id.
+    const looksLikeNumber = /^\d+$/.test(linkedRoleValue);
+    const resolvedRoleName =
+      resolvedByLookup ?? (looksLikeNumber ? "" : linkedRoleValue);
+    return {
       isLoading: isAuthLoading,
       isSyncing,
       isAuthenticated,
       baserowUser,
+      roleName: resolvedRoleName,
       isRestricted: baserowUser ? baserowUser["User Is Active"] !== true : false,
-    }),
-    [isAuthLoading, isSyncing, isAuthenticated, baserowUser],
-  );
+    };
+  }, [isAuthLoading, isSyncing, isAuthenticated, baserowUser, roles]);
 
   return <UserSyncContext.Provider value={value}>{children}</UserSyncContext.Provider>;
 }

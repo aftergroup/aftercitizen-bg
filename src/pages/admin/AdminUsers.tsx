@@ -88,10 +88,23 @@ function UsersTab() {
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<AdminUser | null>(null);
 
+  // Resolve each row's linked role id → role name once. Baserow's default
+  // link_row response returns the target's primary field in `.value`,
+  // which for User Roles is the autonumber — so we can't compare names
+  // directly without a lookup.
+  const roleNameById = new Map(
+    (roles ?? []).map((r) => [r.id, r["User Role Name"]]),
+  );
+  const getUserRoleName = (u: AdminUser): string => {
+    const link = u["User Linked User Role"]?.[0];
+    if (!link) return "";
+    return roleNameById.get(link.id) ?? link.value ?? "";
+  };
+
   // Non-super admins don't get to see (or manage) Super Administrator staff.
   const visibleUsers = (users ?? []).filter((u) => {
     if (isSuperAdmin) return true;
-    return u["User Linked User Role"]?.[0]?.value !== SUPER_ADMIN_ROLE_NAME;
+    return getUserRoleName(u) !== SUPER_ADMIN_ROLE_NAME;
   });
 
   const table = useTableControls<AdminUser, UserSortKey>({
@@ -103,7 +116,7 @@ function UsersTab() {
       u["User Full Name"],
       u["User Username"],
       u["User Phone"],
-      u["User Linked User Role"]?.[0]?.value,
+      getUserRoleName(u),
     ],
     sorters: {
       name: (u) =>
@@ -113,7 +126,7 @@ function UsersTab() {
         "",
       email: (u) => u["User Email"] ?? "",
       phone: (u) => u["User Phone"] ?? "",
-      role: (u) => u["User Linked User Role"]?.[0]?.value ?? "",
+      role: (u) => getUserRoleName(u),
       active: (u) => u["User Is Active"] ?? false,
     },
     defaultSort: { key: "name" },
@@ -175,8 +188,8 @@ function UsersTab() {
                     {u["User Phone"] || "—"}
                   </td>
                   <td className="px-4 py-3">
-                    {u["User Linked User Role"]?.[0]?.value ? (
-                      translateRole(u["User Linked User Role"][0].value)
+                    {getUserRoleName(u) ? (
+                      translateRole(getUserRoleName(u))
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
