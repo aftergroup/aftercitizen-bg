@@ -12,7 +12,8 @@ import {
 import { RowActions } from "@/components/admin/RowActions";
 import { Drawer } from "@/components/Drawer";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import PdfPreviewModal from "@/components/PdfPreviewModal";
+import { FormTemplatePreview } from "@/components/admin/FormTemplatePreview";
+import { hasPdfTemplate } from "@/lib/pdf/registry";
 import { Button, Input } from "@/components/ui";
 import { Check, Eye, EyeOff, Plus } from "lucide-react";
 import type { Form } from "@/lib/types";
@@ -93,7 +94,7 @@ export default function AdminForms() {
                   <td className="px-4 py-3">
                     <RowActions
                       onPreview={
-                        f["Form Blank PDF R2 URL"]
+                        hasPdfTemplate(f["Form Code"])
                           ? () => setPreviewing(f)
                           : undefined
                       }
@@ -134,10 +135,9 @@ export default function AdminForms() {
 
       <DeleteFormDialog form={deleting} onClose={() => setDeleting(null)} />
 
-      {previewing?.["Form Blank PDF R2 URL"] && (
-        <PdfPreviewModal
-          url={previewing["Form Blank PDF R2 URL"]}
-          filename={`${previewing["Form Code"]}.pdf`}
+      {previewing && (
+        <FormTemplatePreview
+          formCode={previewing["Form Code"]}
           onClose={() => setPreviewing(null)}
         />
       )}
