@@ -106,7 +106,7 @@ export default function AdminSubmissions() {
       ) : (
         <div className="border rounded-lg overflow-hidden bg-white">
           <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <thead className="bg-muted/40 text-left text-xs tracking-wide text-muted-foreground">
               <tr>
                 <SortableHeader
                   label="ВХ №"

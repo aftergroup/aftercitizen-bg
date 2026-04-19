@@ -3,6 +3,7 @@ import { useAuth0 } from "@auth0/auth0-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui";
 import { LogOut, ShieldCheck } from "lucide-react";
+import { sendAuth0PasswordReset } from "@/lib/auth0";
 import { Card, FieldRow } from "./shared";
 
 /**
@@ -15,11 +16,6 @@ export default function SecurityTab() {
   const { user, logout } = useAuth0();
   const [isSendingReset, setIsSendingReset] = useState(false);
 
-  const domain = import.meta.env.VITE_AUTH0_DOMAIN;
-  const clientId = import.meta.env.VITE_AUTH0_CLIENT_ID;
-  const connection =
-    import.meta.env.VITE_AUTH0_DB_CONNECTION ?? "Username-Password-Authentication";
-
   const sendPasswordReset = async () => {
     if (!user?.email) {
       toast.error("Имейлът не е достъпен от Auth0");
@@ -27,16 +23,7 @@ export default function SecurityTab() {
     }
     setIsSendingReset(true);
     try {
-      const res = await fetch(`https://${domain}/dbconnections/change_password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          client_id: clientId,
-          email: user.email,
-          connection,
-        }),
-      });
-      if (!res.ok) throw new Error(`Auth0 ${res.status}`);
+      await sendAuth0PasswordReset(user.email);
       toast.success(`Изпратен е имейл за смяна на парола до ${user.email}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

@@ -7,8 +7,16 @@
  * blur so the page behind isn't a distracting silhouette while the drawer
  * is open. Closes on Escape or backdrop click; locks body scroll while
  * open so long forms inside the drawer don't scroll the page underneath.
+ *
+ * Rendered through a portal into document.body so that any ancestor with
+ * `transform`, `filter` or `contain` (which would otherwise anchor our
+ * `position: fixed` to that ancestor instead of the viewport) can't
+ * create a gap at the top. The admin page content gets wrapped in a
+ * `container max-w-6xl` that sits inside flex children — without the
+ * portal the drawer was being contained by that layout stack.
  */
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 export interface DrawerProps {
@@ -35,7 +43,7 @@ export function Drawer({ open, onClose, title, description, footer, children }: 
     };
   }, [open, onClose]);
 
-  return (
+  return createPortal(
     <div
       className={`fixed inset-0 z-50 ${open ? "pointer-events-auto" : "pointer-events-none"}`}
       aria-hidden={!open}
@@ -55,10 +63,12 @@ export function Drawer({ open, onClose, title, description, footer, children }: 
         }`}
       >
         <header className="flex items-start justify-between gap-4 p-5 border-b">
-          <div className="min-w-0">
-            <h2 className="text-lg font-semibold leading-tight truncate">{title}</h2>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-lg font-semibold leading-tight break-words">{title}</h2>
             {description && (
-              <p className="text-sm text-muted-foreground mt-0.5">{description}</p>
+              <p className="text-sm text-muted-foreground mt-0.5 break-words">
+                {description}
+              </p>
             )}
           </div>
           <button
@@ -74,6 +84,7 @@ export function Drawer({ open, onClose, title, description, footer, children }: 
 
         {footer && <footer className="border-t p-4 flex justify-end gap-2">{footer}</footer>}
       </aside>
-    </div>
+    </div>,
+    document.body,
   );
 }

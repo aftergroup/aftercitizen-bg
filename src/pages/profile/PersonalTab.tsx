@@ -6,12 +6,11 @@ import { baserow } from "@/lib/baserow";
 import { Button } from "@/components/ui";
 import type { AdminUser } from "@/lib/types";
 import { Card, FieldRow, SelectField, TextField, selectValue } from "./shared";
+import { CountrySelect, findBulgariaId } from "@/components/CountrySelect";
 
 const GENDER_OPTIONS = [
   { value: "Мъж", label: "Мъж" },
   { value: "Жена", label: "Жена" },
-  { value: "Друг", label: "Друг" },
-  { value: "Не желая да посоча", label: "Не желая да посоча" },
 ];
 
 export default function PersonalTab({ user }: { user: AdminUser }) {
@@ -34,6 +33,15 @@ export default function PersonalTab({ user }: { user: AdminUser }) {
   const [nationalityId, setNationalityId] = useState<number | null>(
     user["User Nationality"]?.[0]?.id ?? null,
   );
+  // Default new (unsaved) nationality to Bulgaria once the countries list
+  // has loaded; existing values win.
+  useEffect(() => {
+    if (nationalityId == null && countries) {
+      const bg = findBulgariaId(countries);
+      if (bg != null) setNationalityId(bg);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countries]);
   const [placeOfBirth, setPlaceOfBirth] = useState(user["User Place Of Birth"] ?? "");
   const [company, setCompany] = useState(user["User Company"] ?? "");
   const [jobRole, setJobRole] = useState(user["User Job Role"] ?? "");
@@ -81,10 +89,6 @@ export default function PersonalTab({ user }: { user: AdminUser }) {
     },
   });
 
-  const countryOptions = (countries ?? []).map((c) => ({
-    value: c.id,
-    label: c["Country Name BG"] || c["Country Name EN"] || c["Country Code"] || `#${c.id}`,
-  }));
 
   return (
     <div className="space-y-4 max-w-3xl">
@@ -118,10 +122,10 @@ export default function PersonalTab({ user }: { user: AdminUser }) {
             />
           </FieldRow>
           <FieldRow label="Националност">
-            <SelectField<number>
+            <CountrySelect
               value={nationalityId}
               onChange={setNationalityId}
-              options={countryOptions}
+              countries={countries ?? []}
             />
           </FieldRow>
           <FieldRow label="Месторождение">

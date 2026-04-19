@@ -3,21 +3,30 @@
  * page renders them the same way (size, spacing, hover affordance) —
  * if the visual changes, it changes in one place.
  */
-import { Pencil, Trash2 } from "lucide-react";
+import { Eye, Pencil, Trash2 } from "lucide-react";
 
 export function RowActions({
+  onPreview,
   onEdit,
   onDelete,
+  previewLabel = "Преглед",
   editLabel = "Редактирай",
   deleteLabel = "Изтрий",
 }: {
+  onPreview?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
+  previewLabel?: string;
   editLabel?: string;
   deleteLabel?: string;
 }) {
   return (
     <div className="flex items-center justify-end gap-1">
+      {onPreview && (
+        <IconButton onClick={onPreview} title={previewLabel} aria-label={previewLabel}>
+          <Eye className="h-3.5 w-3.5" />
+        </IconButton>
+      )}
       {onEdit && (
         <IconButton onClick={onEdit} title={editLabel} aria-label={editLabel}>
           <Pencil className="h-3.5 w-3.5" />
