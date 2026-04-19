@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+{% assign resolved_dir = dir | default: "auto" %}
+<html lang="{{locale}}" dir="{{resolved_dir}}">
+  <head>
+    {%- auth0:head -%}
+    <style>
+      body {
+        background: #000000;
+      }
+
+      /* Use supported hook to customize the widget logo */
+      #custom-prompt-logo {
+        background-image: url('{{ branding.logo_url | default: application.logo_url | default: "https://aftermenu.com/images/logo_aftermenu.png" }}');
+        background-position: center;
+        background-repeat: no-repeat;
+        background-size: contain;
+      }
+
+      /* Hide Sign Up (tabs and alternative links) */
+      .auth0-lock-tabs .auth0-lock-tabs-list li:nth-child(2),
+      .auth0-lock-tabs .auth0-lock-tabs-container li:nth-child(2),
+      .auth0-lock-alternative-link,
+      .auth0-lock-alternative-link a[href*="signup"],
+      .auth0-lock-submit.signup {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body class="_widget-auto-layout _use-custom-prompt-logo" id="login-body">
+    <div id="signup-message" style="display:none; color:#e5e7eb; background:#0b0b0b; min-height:100vh; padding:48px; font-family: 'Inter', system-ui, -apple-system, sans-serif;">
+      <div style="max-width:480px; margin:0 auto; border:1px solid #1f2937; border-radius:12px; padding:32px; background:#111827;">
+        <h1 style="font-size:24px; margin-bottom:12px; color:#f9fafb;">Access required</h1>
+        <p style="font-size:14px; line-height:1.5; color:#d1d5db; margin-bottom:16px;">
+          Sign-up is disabled for this workspace. You have been assigned a default <strong>Guest</strong> role (ID: <code>7</code>).
+        </p>
+        <p style="font-size:14px; line-height:1.5; color:#d1d5db; margin-bottom:16px;">
+          Please contact an administrator to request full access or an upgraded role.
+        </p>
+        <p style="font-size:12px; color:#9ca3af;">If you reached this page in error, close this tab and log in with an approved account.</p>
+      </div>
+    </div>
+
+    <div id="login-widget">
+      {%- auth0:widget -%}
+    </div>
+
+    <script>
+      (function() {
+        // Detect signup intent via URL patterns commonly used by Auth0
+        var path = window.location.pathname || '';
+        var search = window.location.search || '';
+        var hash = window.location.hash || '';
+
+        var isSignup =
+          path.includes('/signup') ||
+          search.includes('screen_hint=signup') ||
+          search.includes('signup') ||
+          hash.includes('signup');
+
+        if (isSignup) {
+          document.body.classList.add('hide-signup');
+          var msg = document.getElementById('signup-message');
+          var widget = document.getElementById('login-widget');
+          if (msg) msg.style.display = 'block';
+          if (widget) widget.style.display = 'none';
+        }
+      })();
+    </script>
+  </body>
+</html>

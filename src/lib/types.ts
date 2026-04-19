@@ -144,3 +144,77 @@ export interface RenderedForm {
   municipality?: Municipality;
   sections: { code: string; nameBg: string; fields: RenderedField[] }[];
 }
+
+// ---------------- Admin-side entities ----------------
+
+// Staff user (table 2657 "Users"). Distinct from citizen users (table 2646).
+// Linked to a role from `User Roles` and authenticated via Auth0.
+export interface AdminUser {
+  id: number;
+  "User Email": string;
+  "User First Name"?: string;
+  "User Last Name"?: string;
+  "User Full Name"?: string;
+  "User Appear As"?: string;
+  "User Username"?: string;
+  "User Phone"?: string;
+  "User Is Active"?: boolean;
+  "User Linked User Role"?: LinkedRecord[];
+  auth0_user_id?: string;
+  "User Default Language"?: string;
+  "User Created On"?: string;
+  "User Last Modified On"?: string;
+}
+
+export interface UserRole {
+  id: number;
+  "User Role Name": string;
+  "User Role Is Active"?: boolean;
+}
+
+// A submitted form (table 2647). `Submission Linked Municipality` is
+// the scoping key for the admin panel — staff only see rows whose
+// linked municipality matches theirs.
+export interface Submission {
+  id: number;
+  "Submission UUID"?: string;
+  "Submission Linked Form"?: LinkedRecord[];
+  "Submission Linked Service"?: LinkedRecord[];
+  "Submission Linked Municipality"?: LinkedRecord[];
+  "Submission Linked User"?: LinkedRecord[];
+  "Submission Status"?: { value: SubmissionStatus } | string;
+  "Submission Citizen Name"?: string;
+  "Submission Citizen Email"?: string;
+  "Submission Citizen Phone"?: string;
+  "Submission Filled PDF R2 URL"?: string;
+  "Submission VH Number"?: string;
+  "Submission Language"?: { value: string } | string;
+  "Submission Submitted At"?: string;
+  "Submission Acknowledged At"?: string;
+  "Submission Completed At"?: string;
+  "Submission Rejection Reason"?: string;
+  "Submission Created On"?: string;
+  "Submission Last Modified On"?: string;
+}
+
+export type SubmissionStatus =
+  | "draft"
+  | "submitted"
+  | "emailed"
+  | "acknowledged"
+  | "completed"
+  | "rejected"
+  | "cancelled";
+
+export interface MunicipalDepartment {
+  id: number;
+  "Municipal Department Name BG": string;
+  "Municipal Department Name EN"?: string;
+  "Municipal Department Linked Municipality"?: LinkedRecord[];
+  "Municipal Department Linked Unit Type"?: LinkedRecord[];
+  "Municipal Department Linked Manager"?: LinkedRecord[];
+  "Municipal Department Email"?: string;
+  "Municipal Department Phone"?: string;
+  "Municipal Department Created On"?: string;
+  "Municipal Department Last Modified On"?: string;
+}

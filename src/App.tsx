@@ -1,11 +1,50 @@
 import { useEffect, useState } from "react";
-import { Routes, Route, Link, Outlet } from "react-router-dom";
+import { Routes, Route, Link, Navigate, Outlet, useNavigate } from "react-router-dom";
+import { Auth0Provider, type AppState } from "@auth0/auth0-react";
 import { useQuery } from "@tanstack/react-query";
 import { Menu, X } from "lucide-react";
 import HomePage from "./pages/HomePage";
 import ServicesList from "./pages/ServicesList";
 import FormPage from "./pages/FormPage";
+import AdminLayout from "./pages/admin/AdminLayout";
+import AdminSubmissions from "./pages/admin/AdminSubmissions";
+import AdminSubmissionDetail from "./pages/admin/AdminSubmissionDetail";
+import AdminUsers from "./pages/admin/AdminUsers";
+import AdminDepartments from "./pages/admin/AdminDepartments";
+import { ProtectedRoute } from "./components/ProtectedRoute";
 import { baserow } from "./lib/baserow";
+
+const AUTH0_DOMAIN = import.meta.env.VITE_AUTH0_DOMAIN;
+const AUTH0_CLIENT_ID = import.meta.env.VITE_AUTH0_CLIENT_ID;
+
+function Auth0ProviderWithNavigate({ children }: { children: React.ReactNode }) {
+  const navigate = useNavigate();
+
+  // Citizen-facing pages don't need Auth0; only /admin does. If env vars
+  // aren't set, render children bare — ProtectedRoute will surface the
+  // missing-config error when a staff user tries to reach /admin.
+  if (!AUTH0_DOMAIN || !AUTH0_CLIENT_ID) return <>{children}</>;
+
+  const onRedirectCallback = (appState?: AppState) => {
+    navigate(appState?.returnTo || window.location.pathname);
+  };
+
+  return (
+    <Auth0Provider
+      domain={AUTH0_DOMAIN}
+      clientId={AUTH0_CLIENT_ID}
+      authorizationParams={{
+        redirect_uri: window.location.origin + "/admin",
+        scope: "openid profile email",
+      }}
+      onRedirectCallback={onRedirectCallback}
+      cacheLocation="localstorage"
+      useRefreshTokens={true}
+    >
+      {children}
+    </Auth0Provider>
+  );
+}
 
 function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { data: categories } = useQuery({
@@ -191,11 +230,34 @@ function Layout() {
 
 export default function App() {
   return (
+    <Auth0ProviderWithNavigate>
+      <AppRoutes />
+    </Auth0ProviderWithNavigate>
+  );
+}
+
+function AppRoutes() {
+  return (
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<HomePage />} />
         <Route path="services" element={<ServicesList />} />
         <Route path="forms/:formCode" element={<FormPage />} />
+      </Route>
+
+      <Route
+        path="admin"
+        element={
+          <ProtectedRoute>
+            <AdminLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<Navigate to="submissions" replace />} />
+        <Route path="submissions" element={<AdminSubmissions />} />
+        <Route path="submissions/:id" element={<AdminSubmissionDetail />} />
+        <Route path="users" element={<AdminUsers />} />
+        <Route path="departments" element={<AdminDepartments />} />
       </Route>
     </Routes>
   );

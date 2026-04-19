@@ -8,6 +8,7 @@
 import type {
   Category, Municipality, Service, Form, FieldDef, FieldType, Section,
   Dictionary, DictionaryEntry, FormField, RenderedForm, RenderedField,
+  AdminUser, UserRole, Submission, MunicipalDepartment,
 } from "./types";
 
 const API = import.meta.env.VITE_BASEROW_API ?? "https://db2.aftergroup.org";
@@ -27,6 +28,9 @@ const T = {
   formFields: Number(import.meta.env.VITE_BASEROW_FORM_FIELDS_TABLE_ID ?? 2645),
   submissions: Number(import.meta.env.VITE_BASEROW_SUBMISSIONS_TABLE_ID ?? 2647),
   submissionValues: Number(import.meta.env.VITE_BASEROW_SUBMISSION_VALUES_TABLE_ID ?? 2648),
+  userRoles: Number(import.meta.env.VITE_BASEROW_USER_ROLES_TABLE_ID ?? 2655),
+  adminUsers: Number(import.meta.env.VITE_BASEROW_ADMIN_USERS_TABLE_ID ?? 2657),
+  municipalDepartments: Number(import.meta.env.VITE_BASEROW_MUNICIPAL_DEPARTMENTS_TABLE_ID ?? 2658),
 };
 
 async function list<T>(tableId: number, params: Record<string, string | number> = {}): Promise<T[]> {
@@ -67,6 +71,66 @@ export const baserow = {
   listMunicipalities: () => list<Municipality>(T.municipalities),
   listServices: () => list<Service>(T.services),
   listForms: () => list<Form>(T.forms),
+
+  // --- Admin-side -------------------------------------------------
+  listAdminUsers: () => list<AdminUser>(T.adminUsers),
+  listUserRoles: () => list<UserRole>(T.userRoles),
+  listMunicipalDepartments: () => list<MunicipalDepartment>(T.municipalDepartments),
+
+  /**
+   * Look up the staff user row whose `auth0_user_id` matches the Auth0
+   * subject. Uses Baserow's `search` first to narrow the result set, then
+   * filters on the exact field client-side (search matches across fields).
+   */
+  async findAdminUserByAuth0Id(auth0Id: string): Promise<AdminUser | null> {
+    const rows = await list<AdminUser>(T.adminUsers, { search: auth0Id });
+    return rows.find((u) => u.auth0_user_id === auth0Id) ?? null;
+  },
+
+  async createAdminUser(payload: Partial<AdminUser>): Promise<AdminUser> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (TOKEN) headers.Authorization = `Token ${TOKEN}`;
+    const res = await fetch(
+      `${API}/api/database/rows/table/${T.adminUsers}/?user_field_names=true`,
+      { method: "POST", headers, body: JSON.stringify(payload) }
+    );
+    if (!res.ok) throw new Error(`Admin user create failed: ${res.status}`);
+    return (await res.json()) as AdminUser;
+  },
+
+  async updateAdminUser(id: number, patch: Partial<AdminUser>): Promise<AdminUser> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (TOKEN) headers.Authorization = `Token ${TOKEN}`;
+    const res = await fetch(
+      `${API}/api/database/rows/table/${T.adminUsers}/${id}/?user_field_names=true`,
+      { method: "PATCH", headers, body: JSON.stringify(patch) }
+    );
+    if (!res.ok) throw new Error(`Admin user update failed: ${res.status}`);
+    return (await res.json()) as AdminUser;
+  },
+
+  /**
+   * List submissions scoped to a single municipality. Uses Baserow's
+   * server-side link-row filter so we only transfer rows the caller
+   * is actually allowed to see, instead of filtering client-side.
+   */
+  listSubmissions(municipalityId: number) {
+    return list<Submission>(T.submissions, {
+      "filter__Submission Linked Municipality__link_row_has": municipalityId,
+    });
+  },
+
+  async getSubmission(id: number): Promise<Submission | null> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (TOKEN) headers.Authorization = `Token ${TOKEN}`;
+    const res = await fetch(
+      `${API}/api/database/rows/table/${T.submissions}/${id}/?user_field_names=true`,
+      { headers }
+    );
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`Submission ${id} fetch failed: ${res.status}`);
+    return (await res.json()) as Submission;
+  },
 
   listFields: () => list<FieldDef>(T.fields),
   listFieldTypes: () => list<FieldType>(T.fieldTypes),

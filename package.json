@@ -12,6 +12,7 @@
     "baserow:patch": "tsx scripts/baserow-patch.mts"
   },
   "dependencies": {
+    "@auth0/auth0-react": "^2.16.2",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-checkbox": "^1.3.2",
     "@radix-ui/react-label": "^2.1.7",
