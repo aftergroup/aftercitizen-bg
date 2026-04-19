@@ -1,15 +1,35 @@
-import { Link, NavLink, Outlet } from "react-router-dom";
+import { useState } from "react";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth0 } from "@auth0/auth0-react";
-import { Building2, FileText, FormInput, LogOut, Settings, User, Users2 } from "lucide-react";
+import {
+  Building2,
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  FormInput,
+  LogOut,
+  Settings,
+  User,
+  Users2,
+} from "lucide-react";
 import { useCurrentMunicipality } from "@/lib/currentMunicipality";
 import { useUserSync } from "@/hooks/useUserSync";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
+import { PROFILE_TABS } from "@/pages/profile/tabs";
 
 export default function AdminLayout() {
   const { municipality } = useCurrentMunicipality();
   const { baserowUser } = useUserSync();
   const { isAdmin } = useIsAdmin();
   const { logout } = useAuth0();
+  const location = useLocation();
+
+  // Auto-expand the profile submenu whenever the user is on a /profile/* route.
+  // Manual toggle via the header button overrides that default so admins can
+  // collapse it back even while browsing their profile.
+  const onProfileRoute = location.pathname.startsWith("/profile");
+  const [profileOpen, setProfileOpen] = useState(onProfileRoute);
+  const expanded = profileOpen || onProfileRoute;
 
   const displayName =
     baserowUser?.["User Appear As"] ||
@@ -33,7 +53,7 @@ export default function AdminLayout() {
           </div>
         </Link>
 
-        <nav className="flex-1 p-2 text-sm space-y-1">
+        <nav className="flex-1 overflow-y-auto p-2 text-sm space-y-1">
           <AdminNavItem to="/admin/submissions" icon={<FileText className="h-4 w-4" />}>
             Заявления
           </AdminNavItem>
@@ -51,10 +71,47 @@ export default function AdminLayout() {
               Настройки
             </AdminNavItem>
           )}
+
           <div className="pt-3 mt-3 border-t">
-            <AdminNavItem to="/profile" icon={<User className="h-4 w-4" />}>
-              Моят профил
-            </AdminNavItem>
+            <button
+              type="button"
+              onClick={() => setProfileOpen((v) => !v)}
+              className={`w-full flex items-center gap-2 px-3 py-2 rounded-md transition-colors ${
+                onProfileRoute
+                  ? "bg-primary/10 text-primary"
+                  : "hover:bg-accent text-foreground"
+              }`}
+            >
+              <User className="h-4 w-4" />
+              <span className="flex-1 text-left">Моят профил</span>
+              {expanded ? (
+                <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+              )}
+            </button>
+
+            {expanded && (
+              <div className="mt-1 ml-3 pl-3 border-l space-y-0.5">
+                {PROFILE_TABS.map((t) => (
+                  <NavLink
+                    key={t.to}
+                    to={`/profile/${t.to}`}
+                    end
+                    className={({ isActive }) =>
+                      `flex items-center gap-2 px-3 py-1.5 text-xs rounded-md transition-colors ${
+                        isActive
+                          ? "bg-primary text-primary-foreground"
+                          : "hover:bg-accent text-foreground"
+                      }`
+                    }
+                  >
+                    <t.icon className="h-3.5 w-3.5" />
+                    <span>{t.label}</span>
+                  </NavLink>
+                ))}
+              </div>
+            )}
           </div>
         </nav>
 
