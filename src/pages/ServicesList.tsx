@@ -21,7 +21,27 @@ export default function ServicesList() {
     queryFn: () => baserow.listServices(),
   });
 
-  const filtered = (services ?? []).filter((s) => {
+  const { data: forms } = useQuery({
+    queryKey: ["forms"],
+    queryFn: () => baserow.listForms(),
+  });
+
+  // A service is "implemented" only if there's a Form whose code matches the
+  // Service Code exactly or starts with "<Service Code>-" (multi-part forms
+  // like UT-005-1 / UT-005-2). Anything else would 404 the form page.
+  const implementedCodes = new Set<string>();
+  for (const f of forms ?? []) {
+    const fc = f["Form Code"];
+    implementedCodes.add(fc);
+    const m = fc.match(/^(.+)-\d+$/);
+    if (m) implementedCodes.add(m[1]);
+  }
+
+  const visible = (services ?? []).filter((s) =>
+    implementedCodes.has(s["Service Code"])
+  );
+
+  const filtered = visible.filter((s) => {
     const catCode = s["Service Linked Category"]?.[0]?.value ?? "";
     const matchCat =
       categoryFilter === "all" ||
@@ -46,7 +66,7 @@ export default function ServicesList() {
       <div className="space-y-2">
         <h1 className="text-3xl font-semibold">Всички услуги</h1>
         <p className="text-muted-foreground">
-          {services?.length ?? 0} услуги в Район Триадица
+          {visible.length} услуги в Район Триадица
         </p>
       </div>
 
