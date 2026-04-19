@@ -74,14 +74,28 @@ export function UserSyncProvider({ children }: { children: ReactNode }) {
 
     (async () => {
       try {
-        const [existing, rolesList] = await Promise.all([
+        const [bySub, rolesList] = await Promise.all([
           baserow.findAdminUserByAuth0Id(user.sub!),
           baserow.listUserRoles(),
         ]);
         if (!cancelled) setRoles(rolesList);
 
+        // Admin-provisioned rows (created from /admin/users) may not have
+        // `auth0_user_id` yet — admins can't read the sub of an existing
+        // Auth0 account from the browser. On first login we fall back to
+        // matching by email and backfill the sub so the row and account
+        // are linked from then on.
+        let existing = bySub;
+        if (!existing && user.email) {
+          const byEmail = await baserow.findAdminUserByEmail(user.email);
+          if (byEmail) existing = byEmail;
+        }
+
         if (existing) {
           const patch: Partial<AdminUser> = {};
+          if (!existing.auth0_user_id) {
+            patch.auth0_user_id = user.sub;
+          }
           if (user.email && existing["User Email"] !== user.email) {
             patch["User Email"] = user.email;
           }

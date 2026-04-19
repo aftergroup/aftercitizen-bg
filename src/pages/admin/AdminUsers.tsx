@@ -15,7 +15,7 @@ import { Button, Input } from "@/components/ui";
 import { Check, KeyRound, Plus, X } from "lucide-react";
 import { useIsAdmin, SUPER_ADMIN_ROLE_NAME } from "@/hooks/useIsAdmin";
 import { translateRole } from "@/lib/roleTranslations";
-import { sendAuth0PasswordReset } from "@/lib/auth0";
+import { createAuth0User, sendAuth0PasswordReset } from "@/lib/auth0";
 import type { AdminUser, UserRole } from "@/lib/types";
 
 type Tab = "users" | "roles";
@@ -278,7 +278,13 @@ function UserDrawer({
   }, [open, user]);
 
   const mutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (): Promise<{
+      row: AdminUser;
+      auth0Created?: boolean;
+      auth0Existed?: boolean;
+      auth0Error?: string;
+      resetEmailSent?: boolean;
+    }> => {
       const payload: Partial<AdminUser> = {
         "User Email": email,
         "User First Name": firstName || undefined,
@@ -289,13 +295,78 @@ function UserDrawer({
         "User Is Active": isActive,
         "User Linked User Role": roleId ? [{ id: roleId, value: "" }] : [],
       };
-      return isCreate
-        ? baserow.createAdminUser(payload)
-        : baserow.updateAdminUser(user!.id, payload);
+
+      if (!isCreate) {
+        const row = await baserow.updateAdminUser(user!.id, payload);
+        return { row };
+      }
+
+      // Provision an Auth0 account alongside the Baserow row so the
+      // employee can actually sign in. Auth0 goes first so we can store
+      // the `sub` on the Baserow row — useUserSync matches on it at
+      // first login. If Auth0 fails (conflict or misconfig), we still
+      // create the Baserow row and surface the problem in a toast.
+      let auth0UserId: string | null = null;
+      let auth0Existed = false;
+      let auth0Error: string | undefined;
+      const fullName =
+        [firstName, lastName].filter(Boolean).join(" ").trim() ||
+        appearAs ||
+        undefined;
+      try {
+        const result = await createAuth0User({ email, name: fullName });
+        auth0UserId = result.auth0UserId;
+        auth0Existed = result.alreadyExists;
+      } catch (err) {
+        auth0Error = err instanceof Error ? err.message : String(err);
+      }
+
+      const row = await baserow.createAdminUser({
+        ...payload,
+        auth0_user_id: auth0UserId ?? undefined,
+      });
+
+      // Send the reset email whether Auth0 created the account or found
+      // an existing one — the user needs a way in either way.
+      let resetEmailSent = false;
+      if (!auth0Error) {
+        try {
+          await sendAuth0PasswordReset(email);
+          resetEmailSent = true;
+        } catch {
+          // Non-fatal — admin can resend from the edit drawer.
+        }
+      }
+
+      return {
+        row,
+        auth0Created: !!auth0UserId,
+        auth0Existed,
+        auth0Error,
+        resetEmailSent,
+      };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["admin", "adminUsers"] });
-      toast.success(isCreate ? "Служителят е създаден" : "Служителят е обновен");
+      if (!isCreate) {
+        toast.success("Служителят е обновен");
+      } else if (result.auth0Error) {
+        toast.warning(
+          `Служителят е записан, но Auth0 отказа: ${result.auth0Error}`,
+        );
+      } else if (result.auth0Existed) {
+        toast.success(
+          result.resetEmailSent
+            ? `Служителят е свързан със съществуващ Auth0 акаунт. Изпратен е имейл за смяна на парола до ${email}.`
+            : "Служителят е записан. Auth0 акаунт с този имейл вече съществува.",
+        );
+      } else {
+        toast.success(
+          result.resetEmailSent
+            ? `Служителят е създаден. Изпратен е имейл за задаване на парола до ${email}.`
+            : "Служителят е създаден.",
+        );
+      }
       onClose();
     },
     onError: (err: unknown) => {

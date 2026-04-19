@@ -311,6 +311,12 @@ export type SubmissionStatus =
   | "rejected"
   | "cancelled";
 
+export interface MunicipalUnitType {
+  id: number;
+  "Municipal Unit Type Name"?: string;
+  "Municipal Unit Type Name (BG)"?: string;
+}
+
 export interface MunicipalDepartment {
   id: number;
   "Municipal Department Name BG": string;

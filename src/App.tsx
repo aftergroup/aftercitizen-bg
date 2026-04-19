@@ -286,7 +286,8 @@ function AppRoutes() {
         <Route path="forms" element={<AdminForms />} />
         <Route path="users" element={<AdminUsers />} />
         <Route path="departments" element={<AdminDepartments />} />
-        <Route path="settings" element={<AdminSettings />} />
+        <Route path="settings" element={<Navigate to="general" replace />} />
+        <Route path="settings/:tab" element={<AdminSettings />} />
       </Route>
 
       <Route
