@@ -326,6 +326,20 @@ export default function RaUtShellTemplate({ schema, values }: Props) {
   const serviceTitle =
     service?.["Service Title BG"] ?? form["Form Title BG"] ?? "";
 
+  /* ----- Addressee: SI-* and most Главен-архитект UT-* go to
+   * "Главния архитект"; the rest (AA-*, several UT-* for general
+   * кмет decisions) go to "Кмета". Map codified from the official
+   * Триадица РА-УТ blanks on R2. ----- */
+  const serviceCode = service?.["Service Code"] ?? form["Form Code"] ?? "";
+  const KMET_CODES = new Set<string>([
+    "UT-001", "UT-004", "UT-013", "UT-019", "UT-020", "UT-021", "UT-022",
+    "UT-023", "UT-024", "UT-025", "UT-026", "UT-035", "UT-036", "UT-037",
+    "UT-038", "UT-039", "UT-040", "UT-041", "UT-042",
+    "AA-001", "AA-002",
+    "SI-010", "SI-012", "SI-014", "SI-015", "SI-016",
+  ]);
+  const addressee = KMET_CODES.has(serviceCode) ? "Кмета" : "Главния архитект";
+
   /* ----- Property cells ----- */
   const propertyCells: { label: string; field: RenderedField | undefined; width?: number }[] = [
     { label: "УПИ", field: propertyUpi, width: 120 },
@@ -359,7 +373,7 @@ export default function RaUtShellTemplate({ schema, values }: Props) {
       <Page size="A4" style={styles.page}>
         <View style={styles.addresseeBlock}>
           <Text style={styles.addresseeLine}>До</Text>
-          <Text style={styles.addresseeFill}>Главния архитект</Text>
+          <Text style={styles.addresseeFill}>{addressee}</Text>
           <Text style={{ fontWeight: 700 }}>на</Text>
           <Text style={styles.addresseeFill}>Район Триадица</Text>
           <Text style={styles.caption}>(район/ кметство)</Text>
@@ -367,7 +381,7 @@ export default function RaUtShellTemplate({ schema, values }: Props) {
 
         <Text style={styles.title}>ЗАЯВЛЕНИЕ</Text>
         <Text style={styles.subtitle}>
-          {serviceTitle || "до Главния архитект"}
+          {serviceTitle || `до ${addressee}`}
         </Text>
 
         {/* Applicant 1 */}
@@ -582,42 +596,44 @@ export default function RaUtShellTemplate({ schema, values }: Props) {
           </>
         )}
 
-        <View style={styles.footer}>
-          <View>
-            {signaturePlace && (
-              <View style={styles.footerField}>
-                <Text style={styles.label}>гр./с.</Text>
+        <View wrap={false}>
+          <View style={styles.footer}>
+            <View>
+              {signaturePlace && (
+                <View style={styles.footerField}>
+                  <Text style={styles.label}>гр./с.</Text>
+                  <Text style={[styles.fillLine, { width: 120, flex: 0 }]}>
+                    {getFieldValue(values, signaturePlace) || "София"}
+                  </Text>
+                </View>
+              )}
+              <View style={[styles.footerField, { marginTop: 6 }]}>
+                <Text style={styles.label}>Дата:</Text>
                 <Text style={[styles.fillLine, { width: 120, flex: 0 }]}>
-                  {getFieldValue(values, signaturePlace) || "София"}
+                  {formatBgDate(getFieldValue(values, signatureDate)) || todaysDateBg}
                 </Text>
               </View>
-            )}
-            <View style={[styles.footerField, { marginTop: 6 }]}>
-              <Text style={styles.label}>Дата:</Text>
-              <Text style={[styles.fillLine, { width: 120, flex: 0 }]}>
-                {formatBgDate(getFieldValue(values, signatureDate)) || todaysDateBg}
-              </Text>
+            </View>
+            <View style={styles.footerField}>
+              <Text style={styles.label}>Подпис:</Text>
+              {signatureIsImage ? (
+                <View style={styles.signatureBox}>
+                  <Image src={signatureValue} style={styles.signatureImage} />
+                </View>
+              ) : (
+                <View style={styles.signatureBox} />
+              )}
             </View>
           </View>
-          <View style={styles.footerField}>
-            <Text style={styles.label}>Подпис:</Text>
-            {signatureIsImage ? (
-              <View style={styles.signatureBox}>
-                <Image src={signatureValue} style={styles.signatureImage} />
-              </View>
-            ) : (
-              <View style={styles.signatureBox} />
-            )}
-          </View>
-        </View>
 
-        <Text style={styles.gdprFooter}>
-          Съгласно чл. 13 от Регламент (ЕС) 2016/679, личните данни, посочени в
-          настоящото заявление, се обработват от Район Триадица за целите на
-          предоставяне на заявената административна услуга. Данните се подават
-          към deloviodstvo@triaditza.bg и се съхраняват съгласно сроковете в
-          нормативната уредба.
-        </Text>
+          <Text style={styles.gdprFooter}>
+            Съгласно чл. 13 от Регламент (ЕС) 2016/679, личните данни, посочени в
+            настоящото заявление, се обработват от Район Триадица за целите на
+            предоставяне на заявената административна услуга. Данните се подават
+            към deloviodstvo@triaditza.bg и се съхраняват съгласно сроковете в
+            нормативната уредба.
+          </Text>
+        </View>
       </Page>
     </Document>
   );

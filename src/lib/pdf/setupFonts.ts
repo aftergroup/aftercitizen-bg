@@ -24,6 +24,12 @@ export function registerPdfFonts() {
     fonts: [
       { src: ROBOTO_CYRILLIC_400, fontWeight: 400 },
       { src: ROBOTO_CYRILLIC_700, fontWeight: 700 },
+      // Italic variants fall back to the regular Cyrillic glyphs. The Google
+      // Italic TTFs don't cover Cyrillic well in the v51 snapshot, so rather
+      // than shipping tofu we visually render italic sections as upright and
+      // lean on surrounding styling (quote marks, underlines) for emphasis.
+      { src: ROBOTO_CYRILLIC_400, fontWeight: 400, fontStyle: "italic" },
+      { src: ROBOTO_CYRILLIC_700, fontWeight: 700, fontStyle: "italic" },
     ],
   });
 }

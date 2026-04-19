@@ -338,30 +338,32 @@ export default function App14PostoyanenTemplate({ schema, values }: Props) {
           </>
         )}
 
-        <View style={styles.footer}>
-          <View style={styles.footerField}>
-            <Text style={styles.label}>Дата:</Text>
-            <Text style={[styles.fillLine, { width: 140, flex: 0 }]}>
-              {formatBgDate(getFieldValue(values, signatureDate)) || todaysDateBg}
-            </Text>
+        <View wrap={false}>
+          <View style={styles.footer}>
+            <View style={styles.footerField}>
+              <Text style={styles.label}>Дата:</Text>
+              <Text style={[styles.fillLine, { width: 140, flex: 0 }]}>
+                {formatBgDate(getFieldValue(values, signatureDate)) || todaysDateBg}
+              </Text>
+            </View>
+            <View style={styles.footerField}>
+              <Text style={styles.label}>Подпис:</Text>
+              {signatureIsImage ? (
+                <View style={styles.signatureBox}>
+                  <Image src={signatureValue} style={styles.signatureImage} />
+                </View>
+              ) : (
+                <View style={styles.signatureBox} />
+              )}
+            </View>
           </View>
-          <View style={styles.footerField}>
-            <Text style={styles.label}>Подпис:</Text>
-            {signatureIsImage ? (
-              <View style={styles.signatureBox}>
-                <Image src={signatureValue} style={styles.signatureImage} />
-              </View>
-            ) : (
-              <View style={styles.signatureBox} />
-            )}
-          </View>
-        </View>
 
-        <Text style={styles.gdprFooter}>
-          Съгласно чл. 13 от Регламент (ЕС) 2016/679, личните данни, посочени в
-          настоящото заявление, се обработват от Район Триадица за целите на
-          предоставяне на заявената административна услуга.
-        </Text>
+          <Text style={styles.gdprFooter}>
+            Съгласно чл. 13 от Регламент (ЕС) 2016/679, личните данни, посочени в
+            настоящото заявление, се обработват от Район Триадица за целите на
+            предоставяне на заявената административна услуга.
+          </Text>
+        </View>
       </Page>
     </Document>
   );

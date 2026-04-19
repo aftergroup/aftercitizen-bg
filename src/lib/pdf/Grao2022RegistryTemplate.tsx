@@ -1,22 +1,26 @@
 /**
- * Printable PDF for the universal GRAO-2022 "ИСКАНЕ" form.
+ * Universal ИСКАНЕ (Приложение № 1 към чл. 6, ал. 1) for GRAO
+ * certificates issued from the population register.
  *
- * Shared by 9 forms (GR-001, 002, 004, 006, 007, 008, 019, 020, 021).
- * Layout mirrors the official Триадица blank: addressee top-right,
- * centered ИСКАНЕ title with service subtitle, applicant block,
- * a 2-column checkbox grid with the 9 certificate types (driven by
- * the `gr_certificate_type` dictionary), numbered attachments, and
- * service-speed / format / delivery footer — matching GR-012.
+ * The real blank lists 14 fixed-text checkbox options; the citizen
+ * (or administrative staff) ticks the row that matches the certificate
+ * being requested. One form-code → one option number — the mapping is
+ * fixed by the service and lives in SERVICE_CODE_TO_OPTION below.
  *
- * Labels come from the Baserow schema so Bulgarian wording stays in
- * sync with the DB. The checked certificate type comes from the
- * submission value, with a fallback to the field's `defaultValue`
- * (the per-form prefill configured in Baserow) — so each of the 9
- * GR forms ticks its own certificate type out of the box.
+ * Shared by GR-001, GR-002, GR-003, GR-004, GR-006, GR-007, GR-008,
+ * GR-009, GR-019, GR-020, GR-021, GR-022, GR-027, GR-032 — all of
+ * which use this exact blank in the Триадица services catalog.
  */
-import { Document, Page, View, Text, Image, StyleSheet } from "@react-pdf/renderer";
-import type { RenderedForm, RenderedField } from "@/lib/types";
-import { formatBgDate, getFieldValue, fieldValueMatches } from "./helpers";
+import { Document, Image, Page, Text, View } from "@react-pdf/renderer";
+import type { RenderedForm } from "@/lib/types";
+import { formatBgDate, getFieldValue } from "./helpers";
+import {
+  Checkbox,
+  findField,
+  firstFieldMatching,
+  pdfStyles,
+  resolveApplicantFields,
+} from "./shared";
 import "./setupFonts";
 
 interface Props {
@@ -24,207 +28,113 @@ interface Props {
   values: Record<string, string>;
 }
 
-const styles = StyleSheet.create({
-  page: {
-    fontFamily: "Roboto",
-    fontSize: 10,
-    paddingTop: 40,
-    paddingBottom: 48,
-    paddingHorizontal: 48,
-    lineHeight: 1.45,
-    color: "#111",
-  },
-  addresseeBlock: { alignSelf: "flex-end", width: 280, marginBottom: 18 },
-  addresseeLine: { fontWeight: 700, fontSize: 11 },
-  addresseeFill: {
-    borderBottom: "1pt dotted #555",
-    marginTop: 2,
-    marginBottom: 2,
-    height: 13,
-    paddingHorizontal: 4,
-    fontSize: 10,
-  },
-  caption: { fontSize: 8, color: "#555", textAlign: "center" },
-  title: { textAlign: "center", fontSize: 16, fontWeight: 700, marginTop: 6 },
-  subtitle: { textAlign: "center", fontSize: 11, fontWeight: 700, marginBottom: 14 },
-  row: { flexDirection: "row", gap: 6, alignItems: "flex-end", marginBottom: 6 },
-  label: { fontSize: 10 },
-  fillLine: {
-    flex: 1,
-    borderBottom: "1pt dotted #333",
-    minHeight: 13,
-    paddingHorizontal: 4,
-  },
-  fillBoxLarge: {
-    borderBottom: "1pt dotted #333",
-    minHeight: 13,
-    paddingHorizontal: 4,
-  },
-  salutation: { fontWeight: 700, marginTop: 10, marginBottom: 2 },
-  paragraph: { marginBottom: 4 },
-  sectionHeader: { marginTop: 10, marginBottom: 4 },
-  certGrid: { flexDirection: "row", flexWrap: "wrap", marginBottom: 10 },
-  certItem: {
-    width: "50%",
-    flexDirection: "row",
-    gap: 4,
-    alignItems: "flex-start",
-    marginBottom: 4,
-    paddingRight: 6,
-  },
-  certText: { fontSize: 9.5, flex: 1 },
-  numberedItem: {
-    flexDirection: "row",
-    gap: 4,
-    marginBottom: 4,
-    alignItems: "flex-end",
-  },
-  numberedIndex: { width: 12, fontSize: 10 },
-  checkRow: {
-    flexDirection: "row",
-    gap: 14,
-    marginBottom: 4,
-    flexWrap: "wrap",
-  },
-  checkItem: { flexDirection: "row", gap: 4, alignItems: "center" },
-  checkbox: {
-    width: 9,
-    height: 9,
-    borderWidth: 1,
-    borderColor: "#333",
-    padding: 1.2,
-  },
-  checkboxFill: { flex: 1, backgroundColor: "#111" },
-  footer: {
-    marginTop: 22,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 16,
-  },
-  footerField: {
-    flexDirection: "row",
-    gap: 4,
-    alignItems: "flex-end",
-    minWidth: 160,
-  },
-  signatureBox: {
-    width: 160,
-    height: 48,
-    borderWidth: 1,
-    borderColor: "#333",
-    borderStyle: "solid",
-    backgroundColor: "#fff",
-    padding: 2,
-  },
-  signatureImage: { width: "100%", height: "100%", objectFit: "contain" },
-  helper: {
-    fontSize: 8,
-    color: "#555",
-    textAlign: "center",
-    marginTop: -2,
-    marginBottom: 4,
-  },
-  gdprFooter: { marginTop: 24, fontSize: 8, color: "#444", lineHeight: 1.35 },
-});
+/**
+ * Which of the 14 blank-options is ticked for each service code.
+ * Anything outside this map falls back to option 14 ("Друго"), with
+ * the service title written into the free-text line.
+ */
+const SERVICE_CODE_TO_OPTION: Record<string, number> = {
+  "GR-001": 2,
+  "GR-002": 1,
+  "GR-003": 4,
+  "GR-004": 10,
+  "GR-006": 12,
+  "GR-007": 11,
+  "GR-008": 13,
+  "GR-009": 11,
+  "GR-019": 3,
+  "GR-020": 6,
+  "GR-021": 8,
+  "GR-022": 9,
+  "GR-027": 7,
+  "GR-032": 5,
+};
 
-function findField(schema: RenderedForm, code: string): RenderedField | undefined {
-  for (const s of schema.sections) {
-    const f = s.fields.find((x) => x.code === code);
-    if (f) return f;
-  }
-  return undefined;
-}
-
-function firstFieldMatching(
-  schema: RenderedForm,
-  predicate: (f: RenderedField) => boolean,
-): RenderedField | undefined {
-  for (const s of schema.sections) {
-    const f = s.fields.find(predicate);
-    if (f) return f;
-  }
-  return undefined;
-}
-
-function Checkbox({ checked }: { checked: boolean }) {
-  return (
-    <View style={styles.checkbox}>
-      {checked ? <View style={styles.checkboxFill} /> : null}
-    </View>
-  );
-}
+const OPTIONS: { n: number; label: string; hint?: string }[] = [
+  { n: 1, label: "Удостоверение за семейно положение" },
+  { n: 2, label: "Удостоверение за семейно положение, съпруг/а и деца" },
+  { n: 3, label: "Удостоверение за съпруг/а и родствени връзки" },
+  { n: 4, label: "Удостоверение за родените от майката деца" },
+  { n: 5, label: "Удостоверение за правно ограничение" },
+  {
+    n: 6,
+    label: "Удостоверение за идентичност на лице с различни имена",
+    hint: "(вписват се различните имена)",
+  },
+  { n: 7, label: "Удостоверение за вписване в регистъра на населението" },
+  {
+    n: 8,
+    label: "Удостоверение за сключване на брак от български гражданин в чужбина",
+    hint: "(вписва се името на лицето, с което българският гражданин ще сключва брак)",
+  },
+  {
+    n: 9,
+    label:
+      "Удостоверение за снабдяване на чужд гражданин с документ за сключване на граждански брак в Република България",
+    hint: "(вписва се името на лицето, с което чуждият гражданин ще сключва брак)",
+  },
+  { n: 10, label: "Удостоверение за постоянен адрес" },
+  { n: 11, label: "Удостоверение за настоящ адрес" },
+  { n: 12, label: "Удостоверение за промени на постоянен адрес" },
+  { n: 13, label: "Удостоверение за промени на настоящ адрес" },
+  { n: 14, label: "Друго:" },
+];
 
 export default function Grao2022RegistryTemplate({ schema, values }: Props) {
   const { form, service } = schema;
+  const serviceCode = service?.["Service Code"] ?? form["Form Code"] ?? "";
+  const selectedOption = SERVICE_CODE_TO_OPTION[serviceCode] ?? 14;
 
-  const firstName = findField(schema, "applicant_first_name");
-  const fatherName = findField(schema, "applicant_father_name");
-  const familyName = findField(schema, "applicant_family_name");
-  const egn =
-    findField(schema, "applicant_egn") ??
-    firstFieldMatching(schema, (f) => f.code.includes("egn") && !f.code.includes("subject"));
-  const birthDate =
-    findField(schema, "applicant_birth_date") ??
-    firstFieldMatching(schema, (f) => f.code.includes("birth_date") && !f.code.includes("subject"));
-  const citizenship = findField(schema, "applicant_citizenship");
-  const idDocNumber = findField(schema, "id_doc_number");
-  const idDocIssueDate = findField(schema, "id_doc_issue_date");
-  const idDocIssuer = findField(schema, "id_doc_issuer");
-  const address =
-    findField(schema, "correspondence_address") ??
-    findField(schema, "applicant_address") ??
-    firstFieldMatching(schema, (f) => f.code.includes("address") && !f.code.includes("delivery"));
-  const phone =
-    findField(schema, "phone") ??
-    firstFieldMatching(schema, (f) => f.code.includes("phone"));
-  const email =
-    findField(schema, "email") ??
-    firstFieldMatching(schema, (f) => f.code.includes("email") && !f.code.includes("delivery"));
+  const r = resolveApplicantFields(schema);
 
-  const certificateType =
-    findField(schema, "gr_certificate_type") ??
-    firstFieldMatching(schema, (f) => f.dictionary?.code === "gr_certificate_type");
+  // Subject-of-request block: by default "за мен"; if subject_* fields
+  // carry values the form switches to "за лицето".
+  const subjectFirst = findField(schema, "subject_first_name");
+  const subjectFather = findField(schema, "subject_father_name");
+  const subjectFamily = findField(schema, "subject_family_name");
+  const subjectEgn =
+    findField(schema, "subject_egn") ??
+    firstFieldMatching(schema, (f) => f.code.includes("subject") && f.code.includes("egn"));
 
-  const attachmentFee =
-    findField(schema, "fee_receipt") ??
-    firstFieldMatching(schema, (f) => f.code.includes("fee"));
-  const attachmentLegal =
-    findField(schema, "legal_basis_document") ??
-    firstFieldMatching(schema, (f) => f.code.includes("legal") || f.code.includes("ground"));
-  const attachmentOther =
-    findField(schema, "other_documents") ??
-    firstFieldMatching(schema, (f) => f.code.includes("other_document"));
+  const subjectName = [
+    getFieldValue(values, subjectFirst),
+    getFieldValue(values, subjectFather),
+    getFieldValue(values, subjectFamily),
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const subjectEgnValue = getFieldValue(values, subjectEgn);
+  const hasSubject = !!(subjectName || subjectEgnValue);
 
-  const serviceSpeed =
-    findField(schema, "service_speed") ??
-    firstFieldMatching(schema, (f) => f.code.includes("speed"));
-  const documentFormat =
-    findField(schema, "document_form") ??
-    findField(schema, "document_format") ??
-    firstFieldMatching(
-      schema,
-      (f) => f.code.includes("document_form") || f.code.includes("format"),
-    );
-  const deliveryChannel =
-    findField(schema, "delivery_method") ??
-    findField(schema, "delivery_channel") ??
-    firstFieldMatching(
-      schema,
-      (f) =>
-        (f.code.includes("delivery") || f.code.includes("channel")) &&
-        !f.code.includes("address") &&
-        !f.code.includes("email"),
-    );
-  const deliveryAddress =
-    findField(schema, "delivery_address") ??
-    firstFieldMatching(
-      schema,
-      (f) => f.code.includes("delivery") && f.code.includes("address"),
-    );
+  const otherText =
+    findField(schema, "request_other_text") ??
+    findField(schema, "request_subject_description") ??
+    firstFieldMatching(schema, (f) => f.code.includes("other"));
+  const differentNames =
+    findField(schema, "different_names") ??
+    firstFieldMatching(schema, (f) => f.code.includes("different_names"));
+  const marriagePartner =
+    findField(schema, "marriage_partner_name") ??
+    firstFieldMatching(schema, (f) => f.code.includes("partner") || f.code.includes("spouse_foreign"));
 
-  const signaturePlace =
-    findField(schema, "signature_place") ??
-    firstFieldMatching(schema, (f) => f.code.includes("place"));
+  const attachments =
+    findField(schema, "attachments_text") ??
+    findField(schema, "attached_documents") ??
+    firstFieldMatching(schema, (f) => f.code.includes("attach"));
+
+  const idDocNumberValue = getFieldValue(values, r.idDocNumber);
+  const idDocIssueDateValue = formatBgDate(getFieldValue(values, r.idDocIssueDate));
+  const idDocIssuerValue = getFieldValue(values, r.idDocIssuer);
+
+  const fullApplicantName = [
+    getFieldValue(values, r.firstName),
+    getFieldValue(values, r.fatherName),
+    getFieldValue(values, r.familyName),
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const signaturePlace = findField(schema, "signature_place");
   const signatureDate =
     findField(schema, "signature_date") ??
     firstFieldMatching(
@@ -240,269 +150,201 @@ export default function Grao2022RegistryTemplate({ schema, values }: Props) {
   const signatureValue = getFieldValue(values, signatureField);
   const signatureIsImage =
     typeof signatureValue === "string" && signatureValue.startsWith("data:image");
-
   const todaysDateBg = formatBgDate(new Date().toISOString().slice(0, 10));
 
-  const fullName = [
-    getFieldValue(values, firstName),
-    getFieldValue(values, fatherName),
-    getFieldValue(values, familyName),
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  const birthDateValue = formatBgDate(getFieldValue(values, birthDate));
-
-  const speedMatches = (...tokens: string[]) =>
-    fieldValueMatches(values, serviceSpeed, tokens);
-  const formatMatches = (...tokens: string[]) =>
-    fieldValueMatches(values, documentFormat, tokens);
-  const deliveryMatches = (...tokens: string[]) =>
-    fieldValueMatches(values, deliveryChannel, tokens);
-
-  const serviceTitle =
-    service?.["Service Title BG"] ?? form["Form Title BG"] ?? "";
-
-  // Selected certificate type — submission value first, then the field's
-  // defaultValue (per-form prefill in Baserow). That's what lets one
-  // template serve 9 different GR forms with the right box pre-ticked.
-  const selectedCertKey =
-    (values[certificateType?.code ?? ""] ?? certificateType?.defaultValue ?? "").trim();
-
-  const certificateEntries = certificateType?.dictionary?.entries ?? [];
+  // GR-020 / option 6 / option 8 / option 9 need inline free-text on
+  // the option line (different names, partner names). Prepare a
+  // lookup so the matching option row renders its specific suffix.
+  const optionSuffix: Record<number, string> = {
+    6: getFieldValue(values, differentNames),
+    8: getFieldValue(values, marriagePartner),
+    9: getFieldValue(values, marriagePartner),
+    14: getFieldValue(values, otherText),
+  };
 
   return (
     <Document>
-      <Page size="A4" style={styles.page}>
-        <View style={styles.addresseeBlock}>
-          <Text style={styles.addresseeLine}>До кмета</Text>
-          <Text style={{ fontWeight: 700 }}>на</Text>
-          <Text style={styles.addresseeFill}>Район Триадица</Text>
-          <Text style={styles.caption}>(район/ кметство)</Text>
-        </View>
-
-        <Text style={styles.title}>ИСКАНЕ</Text>
-        <Text style={styles.subtitle}>
-          {serviceTitle || "за издаване на удостоверение въз основа на регистъра на населението"}
-        </Text>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>От:</Text>
-          <Text style={[styles.fillLine, { flex: 2.75 }]}>{fullName}</Text>
-          <Text style={styles.label}>
-            {birthDate ? birthDate.labelBg : "Дата на раждане"}:
-          </Text>
-          <Text style={[styles.fillLine, { flex: 1 }]}>{birthDateValue}</Text>
-        </View>
-        <Text style={styles.helper}>(име, презиме, фамилия)</Text>
-
-        {egn && (
-          <View style={styles.row}>
-            <Text style={styles.label}>{egn.labelBg}:</Text>
-            <Text style={[styles.fillLine, { flex: 1 }]}>
-              {getFieldValue(values, egn)}
-            </Text>
-            {citizenship && (
-              <>
-                <Text style={styles.label}>{citizenship.labelBg}:</Text>
-                <Text style={[styles.fillLine, { flex: 1 }]}>
-                  {getFieldValue(values, citizenship)}
-                </Text>
-              </>
-            )}
-          </View>
-        )}
-
-        {(idDocNumber || idDocIssueDate || idDocIssuer) && (
-          <View style={styles.row}>
-            {idDocNumber && (
-              <>
-                <Text style={styles.label}>{idDocNumber.labelBg}:</Text>
-                <Text style={[styles.fillLine, { flex: 1 }]}>
-                  {getFieldValue(values, idDocNumber)}
-                </Text>
-              </>
-            )}
-            {idDocIssueDate && (
-              <>
-                <Text style={styles.label}>{idDocIssueDate.labelBg}:</Text>
-                <Text style={[styles.fillLine, { flex: 1 }]}>
-                  {formatBgDate(getFieldValue(values, idDocIssueDate))}
-                </Text>
-              </>
-            )}
-            {idDocIssuer && (
-              <>
-                <Text style={styles.label}>{idDocIssuer.labelBg}:</Text>
-                <Text style={[styles.fillLine, { flex: 1.2 }]}>
-                  {getFieldValue(values, idDocIssuer)}
-                </Text>
-              </>
-            )}
-          </View>
-        )}
-
-        <View style={styles.row}>
-          <Text style={styles.label}>{address ? address.labelBg : "Адрес"}:</Text>
-          <Text style={styles.fillLine}>{getFieldValue(values, address)}</Text>
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>{phone ? phone.labelBg : "Телефон"}:</Text>
-          <Text style={[styles.fillLine, { flex: 1 }]}>
-            {getFieldValue(values, phone)}
-          </Text>
-          <Text style={styles.label}>{email ? email.labelBg : "E-mail"}:</Text>
-          <Text style={[styles.fillLine, { flex: 1.6 }]}>
-            {getFieldValue(values, email)}
-          </Text>
-        </View>
-
-        <Text style={styles.salutation}>Уважаеми г-н/г-жо кмет,</Text>
-        <Text style={styles.paragraph}>
-          Моля, да ми бъде издадено следното удостоверение (отбелязва се в квадратчето):
-        </Text>
-        <View style={styles.certGrid}>
-          {certificateEntries.length > 0 ? (
-            certificateEntries.map((entry, idx) => (
-              <View key={entry.key} style={styles.certItem}>
-                <Checkbox checked={entry.key === selectedCertKey} />
-                <Text style={styles.certText}>
-                  {idx + 1}. {entry.labelBg}
-                </Text>
-              </View>
-            ))
-          ) : (
-            <Text style={styles.certText}>{serviceTitle}</Text>
-          )}
-        </View>
-
-        <Text style={[styles.label, styles.sectionHeader]}>
-          Прилагам следните документи:
-        </Text>
-
-        <View style={styles.numberedItem}>
-          <Text style={styles.numberedIndex}>1.</Text>
-          <Text style={{ fontSize: 10 }}>
-            {attachmentFee ? attachmentFee.labelBg : "Документ за платена такса за услугата"}
-          </Text>
-          <Text style={styles.fillLine}>{getFieldValue(values, attachmentFee)}</Text>
-        </View>
-        <Text style={[styles.helper, { textAlign: "left", marginLeft: 16 }]}>
-          (стойността се определя от вида на документа и вида на услугата)
-        </Text>
-
-        <View style={styles.numberedItem}>
-          <Text style={styles.numberedIndex}>2.</Text>
-          <Text style={{ fontSize: 10 }}>
-            {attachmentLegal ? attachmentLegal.labelBg : "Документ доказващ правно основание"}:
-          </Text>
-          <Text style={styles.fillLine}>{getFieldValue(values, attachmentLegal)}</Text>
-        </View>
-
-        <View style={styles.numberedItem}>
-          <Text style={styles.numberedIndex}>3.</Text>
-          <Text style={{ fontSize: 10 }}>
-            {attachmentOther ? attachmentOther.labelBg : "Други документи"}:
-          </Text>
-          <Text style={styles.fillLine}>{getFieldValue(values, attachmentOther)}</Text>
-        </View>
-
-        <Text style={[styles.label, styles.sectionHeader]}>
-          {serviceSpeed ? serviceSpeed.labelBg : "Желая да получа"} (отбелязва се в квадратчето):
-        </Text>
-        <View style={styles.checkRow}>
-          <View style={styles.checkItem}>
-            <Checkbox checked={speedMatches("обикнов", "regular", "standard")} />
-            <Text>обикновена услуга</Text>
-          </View>
-          <View style={styles.checkItem}>
-            <Checkbox checked={speedMatches("бърз", "fast")} />
-            <Text>бърза услуга</Text>
-          </View>
-          <View style={styles.checkItem}>
-            <Checkbox checked={speedMatches("експрес", "express")} />
-            <Text>експресна услуга</Text>
-          </View>
-        </View>
-
-        <View style={[styles.checkRow, { marginTop: 6 }]}>
-          <Text style={{ fontSize: 10 }}>
-            {documentFormat ? documentFormat.labelBg : "Вид на предоставения документ"}:
-          </Text>
-          <View style={styles.checkItem}>
-            <Checkbox checked={formatMatches("харт", "paper")} />
-            <Text>хартиен</Text>
-          </View>
-          <View style={styles.checkItem}>
-            <Checkbox checked={formatMatches("електрон", "digital", "electronic")} />
-            <Text>електронен</Text>
-          </View>
-        </View>
-
-        <Text style={[styles.label, styles.sectionHeader]}>
-          {deliveryChannel ? deliveryChannel.labelBg : "Начин на получаване"} (отбелязва се в квадратчето):
-        </Text>
-        <View style={styles.checkRow}>
-          <View style={styles.checkItem}>
-            <Checkbox checked={deliveryMatches("гише", "office", "counter")} />
-            <Text>на гише</Text>
-          </View>
-          <View style={styles.checkItem}>
-            <Checkbox checked={deliveryMatches("адрес", "address", "post")} />
-            <Text>на адрес</Text>
-          </View>
-          <View style={styles.checkItem}>
-            <Checkbox checked={deliveryMatches("поща", "email", "e-mail")} />
-            <Text>по е-поща</Text>
-          </View>
-        </View>
-
-        {deliveryAddress && (
-          <>
-            <Text style={styles.fillBoxLarge}>
-              {getFieldValue(values, deliveryAddress)}
-            </Text>
-            <Text style={styles.helper}>
-              (посочва се общинска администрация или адрес, според избрания начина на получаване)
-            </Text>
-          </>
-        )}
-
-        <View style={styles.footer}>
-          <View>
-            <View style={styles.footerField}>
-              <Text style={styles.label}>гр./с.</Text>
-              <Text style={[styles.fillLine, { width: 120, flex: 0 }]}>
-                {getFieldValue(values, signaturePlace) || "София"}
-              </Text>
-            </View>
-            <View style={[styles.footerField, { marginTop: 6 }]}>
-              <Text style={styles.label}>Дата:</Text>
-              <Text style={[styles.fillLine, { width: 120, flex: 0 }]}>
+      <Page size="A4" style={pdfStyles.page}>
+        {/* Top: Вх. № (left) + До Кмета на ... (right) */}
+        <View style={{ flexDirection: "row", marginBottom: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Text>Вх. № ................................</Text>
+            <View style={{ flexDirection: "row", gap: 4, alignItems: "flex-end" }}>
+              <Text>Дата:</Text>
+              <Text style={{ borderBottom: "1pt dotted #555", minWidth: 120, paddingHorizontal: 4 }}>
                 {formatBgDate(getFieldValue(values, signatureDate)) || todaysDateBg}
               </Text>
+              <Text>г.</Text>
             </View>
+            <Text style={pdfStyles.caption}>ден, месец, година</Text>
           </View>
-          <View style={styles.footerField}>
-            <Text style={styles.label}>Подпис:</Text>
-            {signatureIsImage ? (
-              <View style={styles.signatureBox}>
-                <Image src={signatureValue} style={styles.signatureImage} />
-              </View>
-            ) : (
-              <View style={styles.signatureBox} />
-            )}
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontWeight: 700 }}>До Кмета</Text>
+            <View style={{ flexDirection: "row", gap: 4, alignItems: "flex-end" }}>
+              <Text style={{ fontWeight: 700 }}>на:</Text>
+              <Text style={{ borderBottom: "1pt dotted #555", flex: 1, paddingHorizontal: 4 }}>
+                Район Триадица
+              </Text>
+            </View>
+            <Text style={pdfStyles.caption}>община/ район/ кметство</Text>
           </View>
         </View>
 
-        <Text style={styles.gdprFooter}>
-          Съгласно чл. 13 от Регламент (ЕС) 2016/679, личните данни, посочени в
-          настоящото искане, се обработват от Район Триадица за целите на
-          предоставяне на заявената административна услуга. Данните се подават
-          към deloviodstvo@triaditza.bg и се съхраняват съгласно сроковете в
-          нормативната уредба.
+        <Text style={pdfStyles.title}>ИСКАНЕ</Text>
+        <Text style={pdfStyles.subtitle}>
+          ЗА ИЗДАВАНЕ НА УДОСТОВЕРЕНИЕ ВЪЗ ОСНОВА НА РЕГИСТЪРА НА НАСЕЛЕНИЕТО
         </Text>
+
+        {/* От: name (3 columns) */}
+        <View style={pdfStyles.row}>
+          <Text style={pdfStyles.label}>От:</Text>
+          <Text style={[pdfStyles.fillLine, { flex: 1 }]}>
+            {getFieldValue(values, r.firstName) || fullApplicantName}
+          </Text>
+          <Text style={[pdfStyles.fillLine, { flex: 1 }]}>
+            {getFieldValue(values, r.fatherName)}
+          </Text>
+          <Text style={[pdfStyles.fillLine, { flex: 1 }]}>
+            {getFieldValue(values, r.familyName)}
+          </Text>
+        </View>
+        <View style={{ flexDirection: "row", marginTop: -2, marginBottom: 4 }}>
+          <Text style={pdfStyles.caption}>име: собствено                     бащино                         фамилно</Text>
+        </View>
+
+        {/* ЕГН */}
+        <View style={pdfStyles.row}>
+          <Text style={pdfStyles.label}>ЕГН:</Text>
+          <Text style={[pdfStyles.fillLine, { flex: 1 }]}>{getFieldValue(values, r.egn)}</Text>
+        </View>
+        <Text style={pdfStyles.caption}>когато лицето няма ЕГН се посочва дата на раждане</Text>
+
+        {/* Док. за самоличност */}
+        <View style={[pdfStyles.row, { marginTop: 4 }]}>
+          <Text style={pdfStyles.label}>Док. за самоличност: №</Text>
+          <Text style={[pdfStyles.fillLine, { flex: 1 }]}>{idDocNumberValue}</Text>
+          <Text style={pdfStyles.label}>, издаден на:</Text>
+          <Text style={[pdfStyles.fillLine, { flex: 0.8 }]}>{idDocIssueDateValue}</Text>
+          <Text style={pdfStyles.label}>г. от:</Text>
+          <Text style={[pdfStyles.fillLine, { flex: 1 }]}>{idDocIssuerValue}</Text>
+        </View>
+
+        {/* Адрес */}
+        <View style={[pdfStyles.row, { marginTop: 4 }]}>
+          <Text style={pdfStyles.label}>Адрес:</Text>
+          <Text style={pdfStyles.fillLine}>{getFieldValue(values, r.address)}</Text>
+        </View>
+        <Text style={pdfStyles.caption}>посочва се адрес за кореспонденция</Text>
+
+        {/* Телефон / e-mail */}
+        <View style={[pdfStyles.row, { marginTop: 4 }]}>
+          <Text style={pdfStyles.label}>Телефон, факс или адрес на електронна поща:</Text>
+          <Text style={pdfStyles.fillLine}>
+            {[getFieldValue(values, r.phone), getFieldValue(values, r.email)]
+              .filter(Boolean)
+              .join(" / ")}
+          </Text>
+        </View>
+
+        {/* Желая да ми бъде издадено посоченото удостоверение, което се отнася */}
+        <Text style={[pdfStyles.sectionHeader, { fontWeight: 700 }]}>
+          Желая да ми бъде издадено посоченото удостоверение, което се отнася:
+        </Text>
+        <View style={[pdfStyles.checkItem, { marginBottom: 3 }]}>
+          <Checkbox checked={!hasSubject} />
+          <Text>за мен</Text>
+        </View>
+        <View style={pdfStyles.checkItem}>
+          <Checkbox checked={hasSubject} />
+          <View style={{ flexDirection: "row", flex: 1, gap: 4, alignItems: "flex-end" }}>
+            <Text>за лицето:</Text>
+            <Text style={[pdfStyles.fillLine, { flex: 1 }]}>{subjectName}</Text>
+          </View>
+        </View>
+        <Text style={[pdfStyles.caption, { marginLeft: 18 }]}>
+          име: собствено · бащино · фамилно
+        </Text>
+        <View style={[pdfStyles.row, { marginLeft: 14 }]}>
+          <Text style={pdfStyles.label}>ЕГН:</Text>
+          <Text style={[pdfStyles.fillLine, { flex: 1 }]}>{subjectEgnValue}</Text>
+        </View>
+        <Text style={[pdfStyles.caption, { marginLeft: 18 }]}>
+          когато лицето няма ЕГН се посочва дата на раждане
+        </Text>
+
+        {/* 14-option grid */}
+        <View style={{ marginTop: 8 }}>
+          {OPTIONS.map((opt) => {
+            const checked = opt.n === selectedOption;
+            const suffix = optionSuffix[opt.n] ?? "";
+            return (
+              <View key={opt.n} style={{ flexDirection: "row", gap: 4, alignItems: "flex-start", marginBottom: 3 }}>
+                <Checkbox checked={checked} />
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: "row", gap: 4 }}>
+                    <Text style={{ fontSize: 9.5 }}>
+                      {opt.n}. {opt.label}
+                    </Text>
+                    {(opt.n === 6 || opt.n === 8 || opt.n === 9 || opt.n === 14) && (
+                      <Text style={[pdfStyles.fillLine, { flex: 1, fontSize: 9.5 }]}>{suffix}</Text>
+                    )}
+                  </View>
+                  {opt.hint && (
+                    <Text style={[pdfStyles.caption, { textAlign: "left", marginTop: 0 }]}>
+                      {opt.hint}
+                    </Text>
+                  )}
+                </View>
+              </View>
+            );
+          })}
+        </View>
+
+        {/* Прилагам */}
+        <View style={[pdfStyles.row, { marginTop: 6 }]}>
+          <Text style={pdfStyles.label}>Прилагам следните документи:</Text>
+          <Text style={pdfStyles.fillLine}>{getFieldValue(values, attachments)}</Text>
+        </View>
+
+        {/* GDPR paragraph (wording from the blank) */}
+        <Text style={[pdfStyles.gdprFooter, { fontStyle: "italic" }]}>
+          „Столична община е администратор на лични данни с идентификационен номер 52258
+          и представител кмета на Столична община. Предоставените от Вас лични данни, при
+          условията на чл. 19 от ЗЗЛД, се събират и обработват за нуждите на административната
+          услуга, поискана от Вас и могат да бъдат коригирани по Ваше искане. Достъп до
+          информация за личните Ви данни е гарантиран в хода на цялата процедура. Трети
+          лица могат да получат информация само по реда и при условия на закона.
+          Непредставянето на личните данни, които се изискват от закон, може да доведе до
+          прекратяване на производството."
+        </Text>
+
+        <View wrap={false} style={{ marginTop: 20, flexDirection: "row", justifyContent: "space-between", gap: 16 }}>
+          <View style={{ flexDirection: "row", gap: 4, alignItems: "flex-end" }}>
+            <Text>Дата:</Text>
+            <Text style={{ borderBottom: "1pt dotted #333", minWidth: 140, paddingHorizontal: 4 }}>
+              {formatBgDate(getFieldValue(values, signatureDate)) || todaysDateBg}
+            </Text>
+            {signaturePlace && (
+              <>
+                <Text style={pdfStyles.label}>, гр./с.:</Text>
+                <Text style={{ borderBottom: "1pt dotted #333", minWidth: 80, paddingHorizontal: 4 }}>
+                  {getFieldValue(values, signaturePlace) || "София"}
+                </Text>
+              </>
+            )}
+          </View>
+          <View style={{ flexDirection: "row", gap: 4, alignItems: "flex-end", minWidth: 200 }}>
+            <Text>Подпис:</Text>
+            {signatureIsImage ? (
+              <View style={{ width: 140, height: 32, borderBottom: "1pt solid #333" }}>
+                <Image src={signatureValue} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+              </View>
+            ) : (
+              <Text style={{ borderBottom: "1pt dotted #333", flex: 1, minHeight: 20 }}> </Text>
+            )}
+          </View>
+        </View>
+        <Text style={[pdfStyles.caption, { textAlign: "left" }]}>ден, месец, година</Text>
       </Page>
     </Document>
   );

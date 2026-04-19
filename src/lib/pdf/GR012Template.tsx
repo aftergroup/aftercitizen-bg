@@ -478,40 +478,42 @@ export default function GR012Template({ schema, values }: Props) {
           </>
         )}
 
-        <View style={styles.footer}>
-          <View>
-            <View style={styles.footerField}>
-              <Text style={styles.label}>гр./с.</Text>
-              <Text style={[styles.fillLine, { width: 120, flex: 0 }]}>
-                {getFieldValue(values, signaturePlace) || "София"}
-              </Text>
-            </View>
-            <View style={[styles.footerField, { marginTop: 6 }]}>
-              <Text style={styles.label}>Дата :</Text>
-              <Text style={[styles.fillLine, { width: 120, flex: 0 }]}>
-                {formatBgDate(getFieldValue(values, signatureDate)) || todaysDateBg}
-              </Text>
-            </View>
-          </View>
-          <View style={styles.footerField}>
-            <Text style={styles.label}>Подпис :</Text>
-            {signatureIsImage ? (
-              <View style={styles.signatureBox}>
-                <Image src={signatureValue} style={styles.signatureImage} />
+        <View wrap={false}>
+          <View style={styles.footer}>
+            <View>
+              <View style={styles.footerField}>
+                <Text style={styles.label}>гр./с.</Text>
+                <Text style={[styles.fillLine, { width: 120, flex: 0 }]}>
+                  {getFieldValue(values, signaturePlace) || "София"}
+                </Text>
               </View>
-            ) : (
-              <View style={styles.signatureBox} />
-            )}
+              <View style={[styles.footerField, { marginTop: 6 }]}>
+                <Text style={styles.label}>Дата :</Text>
+                <Text style={[styles.fillLine, { width: 120, flex: 0 }]}>
+                  {formatBgDate(getFieldValue(values, signatureDate)) || todaysDateBg}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.footerField}>
+              <Text style={styles.label}>Подпис :</Text>
+              {signatureIsImage ? (
+                <View style={styles.signatureBox}>
+                  <Image src={signatureValue} style={styles.signatureImage} />
+                </View>
+              ) : (
+                <View style={styles.signatureBox} />
+              )}
+            </View>
           </View>
-        </View>
 
-        <Text style={styles.gdprFooter}>
-          Съгласно чл. 13 от Регламент (ЕС) 2016/679, личните данни, посочени в
-          настоящото заявление, се обработват от Район Триадица за целите на
-          предоставяне на заявената административна услуга. Данните се подават
-          към deloviodstvo@triaditza.bg и се съхраняват съгласно сроковете в
-          нормативната уредба.
-        </Text>
+          <Text style={styles.gdprFooter}>
+            Съгласно чл. 13 от Регламент (ЕС) 2016/679, личните данни, посочени в
+            настоящото заявление, се обработват от Район Триадица за целите на
+            предоставяне на заявената административна услуга. Данните се подават
+            към deloviodstvo@triaditza.bg и се съхраняват съгласно сроковете в
+            нормативната уредба.
+          </Text>
+        </View>
       </Page>
     </Document>
   );
