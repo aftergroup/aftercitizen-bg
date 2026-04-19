@@ -50,7 +50,7 @@ export default function GR011Template({ schema, values }: Props) {
   return (
     <Document>
       <Page size="A4" style={pdfStyles.page}>
-        <AddresseeBlock />
+        <AddresseeBlock schema={schema} />
         <HeaderTitle
           title="ЗАЯВЛЕНИЕ"
           subtitle={serviceTitle || "за издаване на удостоверение за раждане — оригинал"}

@@ -13,6 +13,7 @@ import { formatBgDate, getFieldValue } from "./helpers";
 import {
   findField,
   firstFieldMatching,
+  getMunicipality,
   pdfStyles,
   resolveApplicantFields,
 } from "./shared";
@@ -105,7 +106,7 @@ export default function OSHousingTemplate({ schema, values }: Props) {
         <Text style={{ fontWeight: 700, marginTop: 12, marginBottom: 4 }}>УВАЖАЕМИ Г-Н КМЕТ,</Text>
         <Text>
           Моля семейството/домакинството ми да бъде включено в картотеката на нуждаещите се
-          от жилище граждани при район „Триадица".
+          от жилище граждани при {getMunicipality(schema).type} „{getMunicipality(schema).nameShort}".
         </Text>
 
         <Text style={[pdfStyles.sectionHeader, { fontWeight: 700 }]}>

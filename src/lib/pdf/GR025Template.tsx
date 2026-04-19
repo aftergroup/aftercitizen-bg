@@ -54,7 +54,7 @@ export default function GR025Template({ schema, values }: Props) {
   return (
     <Document>
       <Page size="A4" style={pdfStyles.page}>
-        <AddresseeBlock />
+        <AddresseeBlock schema={schema} />
         <HeaderTitle title="ИСКАНЕ" subtitle={serviceTitle || "за издаване на справки по искане на съдебни изпълнители"} />
 
         <Text style={pdfStyles.paragraph}>От съдебен изпълнител:</Text>

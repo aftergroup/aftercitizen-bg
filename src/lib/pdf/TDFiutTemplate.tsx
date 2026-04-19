@@ -15,7 +15,7 @@
 import { Document, Image, Page, Text, View } from "@react-pdf/renderer";
 import type { RenderedForm } from "@/lib/types";
 import { formatBgDate, getFieldValue } from "./helpers";
-import { findField, firstFieldMatching, pdfStyles, resolveApplicantFields } from "./shared";
+import { findField, firstFieldMatching, getMunicipality, pdfStyles, resolveApplicantFields } from "./shared";
 import "./setupFonts";
 
 interface Props {
@@ -23,16 +23,17 @@ interface Props {
   values: Record<string, string>;
 }
 
-function TriadicaHeader() {
+function TriadicaHeader({ schema }: { schema: RenderedForm }) {
+  const m = getMunicipality(schema);
   return (
     <>
       <View style={{ alignItems: "center", marginBottom: 4 }}>
         <Text style={{ fontSize: 14, fontWeight: 700, color: "#1f3a7b" }}>СТОЛИЧНА ОБЩИНА</Text>
-        <Text style={{ fontSize: 18, fontWeight: 700, color: "#1f3a7b" }}>РАЙОН ТРИАДИЦА</Text>
+        <Text style={{ fontSize: 18, fontWeight: 700, color: "#1f3a7b" }}>{m.nameBg.toUpperCase()}</Text>
       </View>
       <View style={{ borderTop: "1pt solid #1f3a7b", borderBottom: "1pt solid #1f3a7b", padding: 3, marginBottom: 12 }}>
         <Text style={{ textAlign: "center", fontSize: 8.5, color: "#1f3a7b" }}>
-          София, ул. „Алабин" № 54     тел.: 02 8054 101     www.triaditza.org     triaditsa@sofia.bg
+          {m.address}     тел.: {m.phone}     {m.websiteUrl}     {m.contactEmail}
         </Text>
       </View>
     </>
@@ -83,11 +84,11 @@ export default function TDFiutTemplate({ schema, values }: Props) {
   return (
     <Document>
       <Page size="A4" style={pdfStyles.page}>
-        <TriadicaHeader />
+        <TriadicaHeader schema={schema} />
 
         <View style={{ marginBottom: 10 }}>
           <Text>ДО</Text>
-          <Text style={{ fontWeight: 700 }}>КМЕТА НА РАЙОН „ТРИАДИЦА"</Text>
+          <Text style={{ fontWeight: 700 }}>КМЕТА НА {getMunicipality(schema).type.toUpperCase()} „{getMunicipality(schema).nameShort.toUpperCase()}"</Text>
         </View>
 
         <Text style={{ textAlign: "center", fontSize: 16, fontWeight: 700, letterSpacing: 4, marginTop: 6 }}>
@@ -245,7 +246,7 @@ export default function TDFiutTemplate({ schema, values }: Props) {
 
       {/* Page 2: Declaration (TD-007-2) */}
       <Page size="A4" style={pdfStyles.page}>
-        <TriadicaHeader />
+        <TriadicaHeader schema={schema} />
 
         <Text style={{ textAlign: "center", fontSize: 18, fontWeight: 700, letterSpacing: 6, marginTop: 6, marginBottom: 18 }}>
           Д Е К Л А Р А Ц И Я

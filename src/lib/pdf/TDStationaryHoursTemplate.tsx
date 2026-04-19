@@ -13,7 +13,7 @@
 import { Document, Image, Page, Text, View } from "@react-pdf/renderer";
 import type { RenderedForm } from "@/lib/types";
 import { fieldValueMatches, formatBgDate, getFieldValue } from "./helpers";
-import { findField, firstFieldMatching, pdfStyles } from "./shared";
+import { findField, firstFieldMatching, getMunicipality, pdfStyles } from "./shared";
 import "./setupFonts";
 
 interface Props {
@@ -21,16 +21,17 @@ interface Props {
   values: Record<string, string>;
 }
 
-function TriadicaHeader() {
+function TriadicaHeader({ schema }: { schema: RenderedForm }) {
+  const m = getMunicipality(schema);
   return (
     <>
       <View style={{ alignItems: "center", marginBottom: 4 }}>
         <Text style={{ fontSize: 14, fontWeight: 700, color: "#1f3a7b" }}>СТОЛИЧНА ОБЩИНА</Text>
-        <Text style={{ fontSize: 18, fontWeight: 700, color: "#1f3a7b" }}>РАЙОН ТРИАДИЦА</Text>
+        <Text style={{ fontSize: 18, fontWeight: 700, color: "#1f3a7b" }}>{m.nameBg.toUpperCase()}</Text>
       </View>
       <View style={{ borderTop: "1pt solid #1f3a7b", borderBottom: "1pt solid #1f3a7b", padding: 3, marginBottom: 12 }}>
         <Text style={{ textAlign: "center", fontSize: 8.5, color: "#1f3a7b" }}>
-          София, ул. „Алабин" № 54     тел.: 02 8054 101     www.triaditza.org     triaditsa@sofia.bg
+          {m.address}     тел.: {m.phone}     {m.websiteUrl}     {m.contactEmail}
         </Text>
       </View>
     </>
@@ -85,7 +86,7 @@ export default function TDStationaryHoursTemplate({ schema, values }: Props) {
   return (
     <Document>
       <Page size="A4" style={pdfStyles.page}>
-        <TriadicaHeader />
+        <TriadicaHeader schema={schema} />
 
         <View style={{ flexDirection: "row", gap: 4, alignItems: "flex-end", marginBottom: 2 }}>
           <Text style={[pdfStyles.fillLine, { flex: 0.6 }]}>{getFieldValue(values, regIndex)}</Text>
@@ -187,13 +188,13 @@ export default function TDStationaryHoursTemplate({ schema, values }: Props) {
           <Text>/</Text>
           <Text style={[pdfStyles.fillLine, { flex: 1 }]}> </Text>
         </View>
-        <Text style={{ fontSize: 9 }}>в информационен масив „Търговски обекти" на район „Триадица".</Text>
+        <Text style={{ fontSize: 9 }}>в информационен масив „Търговски обекти" на {getMunicipality(schema).type} „{getMunicipality(schema).nameShort}".</Text>
         <Text style={{ marginTop: 6, fontSize: 9 }}>
           При промяна в обстоятелствата вписани в настоящото заявление се задължавам да уведомя
           районната администрация в 14 (четиринадесет) дневен срок.
         </Text>
         <Text style={{ marginTop: 8, fontWeight: 700, textAlign: "right" }}>
-          КМЕТ НА РАЙОН „ТРИАДИЦА":
+          КМЕТ НА {getMunicipality(schema).type.toUpperCase()} „{getMunicipality(schema).nameShort.toUpperCase()}":
         </Text>
       </Page>
 

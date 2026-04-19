@@ -6,7 +6,7 @@
  */
 
 import type {
-  Category, Service, Form, FieldDef, FieldType, Section,
+  Category, Municipality, Service, Form, FieldDef, FieldType, Section,
   Dictionary, DictionaryEntry, FormField, RenderedForm, RenderedField,
 } from "./types";
 
@@ -15,6 +15,7 @@ const TOKEN = import.meta.env.VITE_BASEROW_TOKEN ?? "";
 
 const T = {
   categories: Number(import.meta.env.VITE_BASEROW_CATEGORIES_TABLE_ID ?? 2631),
+  municipalities: Number(import.meta.env.VITE_BASEROW_MUNICIPALITIES_TABLE_ID ?? 2632),
   fieldTypes: Number(import.meta.env.VITE_BASEROW_FIELD_TYPES_TABLE_ID ?? 2634),
   sections: Number(import.meta.env.VITE_BASEROW_FORM_SECTIONS_TABLE_ID ?? 2635),
   dictionaries: Number(import.meta.env.VITE_BASEROW_DICTIONARIES_TABLE_ID ?? 2636),
@@ -58,10 +59,12 @@ export interface ReferenceData {
   sections: Section[];
   dicts: Dictionary[];
   entries: DictionaryEntry[];
+  municipalities: Municipality[];
 }
 
 export const baserow = {
   listCategories: () => list<Category>(T.categories),
+  listMunicipalities: () => list<Municipality>(T.municipalities),
   listServices: () => list<Service>(T.services),
   listForms: () => list<Form>(T.forms),
 
@@ -76,14 +79,15 @@ export const baserow = {
    * lookups — callers should cache the result aggressively (staleTime of an hour+).
    */
   async getReferenceData(): Promise<ReferenceData> {
-    const [fields, types, sections, dicts, entries] = await Promise.all([
+    const [fields, types, sections, dicts, entries, municipalities] = await Promise.all([
       baserow.listFields(),
       baserow.listFieldTypes(),
       baserow.listSections(),
       baserow.listDictionaries(),
       baserow.listDictionaryEntries(),
+      baserow.listMunicipalities(),
     ]);
-    return { fields, types, sections, dicts, entries };
+    return { fields, types, sections, dicts, entries, municipalities };
   },
 
   /**
@@ -117,7 +121,12 @@ export const baserow = {
     reference: ReferenceData,
     service?: Service,
   ): RenderedForm {
-    const { fields, types, sections, dicts, entries } = reference;
+    const { fields, types, sections, dicts, entries, municipalities } = reference;
+
+    const municipalityId = service?.["Service Linked Municipality"]?.[0]?.id;
+    const municipality = municipalityId
+      ? municipalities.find((m) => m.id === municipalityId)
+      : undefined;
 
     const fieldsById = new Map(fields.map((f) => [f.id, f]));
     const typesById = new Map(types.map((t) => [t.id, t]));
@@ -194,7 +203,7 @@ export const baserow = {
         fields: rendered.filter((r) => r.sectionCode === code),
       }));
 
-    return { form, service, sections: sectionsOrdered };
+    return { form, service, municipality, sections: sectionsOrdered };
   },
 
   /**

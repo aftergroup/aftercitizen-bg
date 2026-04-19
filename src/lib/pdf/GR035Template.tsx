@@ -58,7 +58,7 @@ export default function GR035Template({ schema, values }: Props) {
   return (
     <Document>
       <Page size="A4" style={pdfStyles.page}>
-        <AddresseeBlock />
+        <AddresseeBlock schema={schema} />
         <HeaderTitle title="ЗАЯВЛЕНИЕ" subtitle={serviceTitle || "за отразяване на избор или промяна на режим на имуществените отношения между съпрузи"} />
 
         <Text style={pdfStyles.paragraph}>Долуподписани съпрузи:</Text>

@@ -7,6 +7,25 @@
 
 export type LinkedRecord = { id: number; value: string; order?: string };
 
+// Municipalities — Sofia districts (Триадица, Младост, Слатина, …) and other
+// municipalities that may onboard later. The PDF templates pull headers,
+// addressee labels, and the GDPR contact email from this row.
+export interface Municipality {
+  id: number;
+  "Municipality Code": string;
+  "Municipality Name BG": string;
+  "Municipality Name EN"?: string;
+  "Municipality Slug"?: string;
+  "Municipality Type"?: { value: string } | string;
+  "Municipality Deloviodstvo Email"?: string;
+  "Municipality Contact Email"?: string;
+  "Municipality Website URL"?: string;
+  "Municipality Phone"?: string;
+  "Municipality Address"?: string;
+  "Municipality EIK"?: string;
+  "Municipality Status"?: { value: string } | string;
+}
+
 // Categories — e.g. "Гражданска регистрация" (GR), "Устройство на територията" (UT)
 export interface Category {
   id: number;
@@ -29,6 +48,7 @@ export interface Service {
   "Service Processing Time"?: string;
   "Service Delivery Channel"?: string;
   "Service Linked Category": LinkedRecord[];
+  "Service Linked Municipality"?: LinkedRecord[];
   "Service Status"?: { value: string } | string;
 }
 
@@ -121,5 +141,6 @@ export interface RenderedField {
 export interface RenderedForm {
   form: Form;
   service?: Service;
+  municipality?: Municipality;
   sections: { code: string; nameBg: string; fields: RenderedField[] }[];
 }

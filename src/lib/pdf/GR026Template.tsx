@@ -48,7 +48,7 @@ export default function GR026Template({ schema, values }: Props) {
   return (
     <Document>
       <Page size="A4" style={pdfStyles.page}>
-        <AddresseeBlock />
+        <AddresseeBlock schema={schema} />
         <HeaderTitle title="ИСКАНЕ" subtitle={serviceTitle || "за издаване на заверен препис или копие"} />
         <ApplicantBlock schema={schema} values={values} />
 

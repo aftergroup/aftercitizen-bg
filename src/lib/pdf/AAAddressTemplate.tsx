@@ -21,7 +21,7 @@
 import { Document, Image, Page, Text, View } from "@react-pdf/renderer";
 import type { RenderedField, RenderedForm } from "@/lib/types";
 import { formatBgDate, getFieldValue } from "./helpers";
-import { findField, pdfStyles, resolveApplicantFields } from "./shared";
+import { findField, getMunicipality, pdfStyles, resolveApplicantFields } from "./shared";
 import "./setupFonts";
 
 interface Props {
@@ -105,7 +105,7 @@ export default function AAAddressTemplate({ schema, values }: Props) {
           <Text style={pdfStyles.addresseeLine}>До</Text>
           <Text style={pdfStyles.addresseeFill}>Главния архитект</Text>
           <Text style={{ fontWeight: 700 }}>на</Text>
-          <Text style={pdfStyles.addresseeFill}>Район Триадица</Text>
+          <Text style={pdfStyles.addresseeFill}>{getMunicipality(schema).nameBg}</Text>
           <Text style={pdfStyles.caption}>(район/ кметство)</Text>
         </View>
 
@@ -344,8 +344,8 @@ export default function AAAddressTemplate({ schema, values }: Props) {
 
           <Text style={pdfStyles.gdprFooter}>
             Съгласно чл. 13 от Регламент (ЕС) 2016/679, личните данни, посочени в настоящото
-            заявление, се обработват от Район Триадица за целите на предоставяне на заявената
-            административна услуга. Данните се подават към deloviodstvo@triaditza.bg и се
+            заявление, се обработват от {getMunicipality(schema).nameBg} за целите на предоставяне на заявената
+            административна услуга. Данните се подават към {getMunicipality(schema).email} и се
             съхраняват съгласно сроковете в нормативната уредба.
           </Text>
         </View>

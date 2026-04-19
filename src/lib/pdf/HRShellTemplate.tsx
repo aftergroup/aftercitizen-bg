@@ -20,6 +20,7 @@ import { formatBgDate, getFieldValue } from "./helpers";
 import {
   findField,
   firstFieldMatching,
+  getMunicipality,
   pdfStyles,
   resolveApplicantFields,
 } from "./shared";
@@ -150,7 +151,7 @@ export default function HRShellTemplate({ schema, values }: Props) {
           <View style={{ flexDirection: "row", gap: 4, alignItems: "flex-end" }}>
             <Text>Кмета на район</Text>
             <Text style={{ borderBottom: "1pt dotted #555", flex: 1, paddingHorizontal: 4 }}>
-              Триадица
+              {getMunicipality(schema).nameShort}
             </Text>
           </View>
         </View>

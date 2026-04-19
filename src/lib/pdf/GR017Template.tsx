@@ -22,6 +22,7 @@ import {
   Checkbox,
   findField,
   firstFieldMatching,
+  getMunicipality,
   pdfStyles,
   resolveApplicantFields,
 } from "./shared";
@@ -143,7 +144,7 @@ export default function GR017Template({ schema, values }: Props) {
             <View style={{ flexDirection: "row", gap: 4, alignItems: "flex-end" }}>
               <Text style={{ fontWeight: 700 }}>на:</Text>
               <Text style={{ borderBottom: "1pt dotted #555", flex: 1, paddingHorizontal: 4 }}>
-                Район Триадица
+                {getMunicipality(schema).nameBg}
               </Text>
             </View>
             <Text style={pdfStyles.caption}>община/ район/ кметство</Text>

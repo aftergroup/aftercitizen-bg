@@ -127,6 +127,33 @@ export const pdfStyles = StyleSheet.create({
   },
 });
 
+/**
+ * Resolve municipality strings used in PDF templates. Falls back to
+ * Район Триадица so legacy templates that skip the schema arg keep working
+ * during the multi-municipality rollout.
+ */
+export function getMunicipality(schema?: RenderedForm) {
+  const m = schema?.municipality;
+  const nameBg = m?.["Municipality Name BG"] ?? "Район Триадица";
+  const typeRaw = m?.["Municipality Type"];
+  const type = typeof typeRaw === "string" ? typeRaw : typeRaw?.value ?? "район";
+  const deloviodstvoEmail = m?.["Municipality Deloviodstvo Email"] ?? "deloviodstvo@triaditza.bg";
+  return {
+    nameBg,
+    nameShort: nameBg.replace(/^(Район|Община)\s+/i, ""),
+    type,
+    email: deloviodstvoEmail,
+    contactEmail: m?.["Municipality Contact Email"] ?? deloviodstvoEmail,
+    address: m?.["Municipality Address"] ?? "София, ул. „Алабин\" № 54",
+    phone: m?.["Municipality Phone"] ?? "02 8054 101",
+    websiteUrl: stripScheme(m?.["Municipality Website URL"]) ?? "www.triaditza.org",
+  };
+}
+
+function stripScheme(url?: string): string | undefined {
+  return url?.replace(/^https?:\/\//, "").replace(/\/$/, "");
+}
+
 export function findField(
   schema: RenderedForm,
   code: string,
@@ -157,14 +184,18 @@ export function Checkbox({ checked }: { checked: boolean }) {
   );
 }
 
-export function AddresseeBlock({ line = "До кмета на" }: { line?: string } = {}) {
+export function AddresseeBlock({
+  line = "До кмета на",
+  schema,
+}: { line?: string; schema?: RenderedForm } = {}) {
   const parts = line.split(" на");
   const head = parts[0];
+  const { nameBg } = getMunicipality(schema);
   return (
     <View style={pdfStyles.addresseeBlock}>
       <Text style={pdfStyles.addresseeLine}>{head}</Text>
       <Text style={{ fontWeight: 700 }}>на</Text>
-      <Text style={pdfStyles.addresseeFill}>Район Триадица</Text>
+      <Text style={pdfStyles.addresseeFill}>{nameBg}</Text>
       <Text style={pdfStyles.caption}>(район/ кметство)</Text>
     </View>
   );
@@ -574,9 +605,9 @@ export function SignatureFooter({
 
       <Text style={pdfStyles.gdprFooter}>
         Съгласно чл. 13 от Регламент (ЕС) 2016/679, личните данни, посочени в
-        настоящото {gdprSubject}, се обработват от Район Триадица за целите на
+        настоящото {gdprSubject}, се обработват от {getMunicipality(schema).nameBg} за целите на
         предоставяне на заявената административна услуга. Данните се подават
-        към deloviodstvo@triaditza.bg и се съхраняват съгласно сроковете в
+        към {getMunicipality(schema).email} и се съхраняват съгласно сроковете в
         нормативната уредба.
       </Text>
     </View>

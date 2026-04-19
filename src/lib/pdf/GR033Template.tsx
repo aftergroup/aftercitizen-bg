@@ -51,7 +51,7 @@ export default function GR033Template({ schema, values }: Props) {
   return (
     <Document>
       <Page size="A4" style={pdfStyles.page}>
-        <AddresseeBlock />
+        <AddresseeBlock schema={schema} />
         <HeaderTitle title="ЗАЯВЛЕНИЕ" subtitle={serviceTitle || "за комплектоване и проверка на документи към искане за установяване на българско гражданство"} />
         <ApplicantBlock schema={schema} values={values} />
 

@@ -50,7 +50,7 @@ export default function GR028Template({ schema, values }: Props) {
   return (
     <Document>
       <Page size="A4" style={pdfStyles.page}>
-        <AddresseeBlock />
+        <AddresseeBlock schema={schema} />
         <HeaderTitle title="ИСКАНЕ" subtitle={serviceTitle || "за издаване на препис от семеен регистър, воден до 1978 г."} />
         <ApplicantBlock schema={schema} values={values} />
 
