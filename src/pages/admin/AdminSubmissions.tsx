@@ -1,10 +1,14 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { baserow } from "@/lib/baserow";
 import { useCurrentMunicipality } from "@/lib/currentMunicipality";
-import { Input } from "@/components/ui";
-import { Search } from "lucide-react";
+import {
+  Pagination,
+  SearchBar,
+  SortableHeader,
+  useTableControls,
+} from "@/components/admin/tableControls";
 import type { Submission, SubmissionStatus } from "@/lib/types";
 
 const STATUS_OPTIONS: { value: "all" | SubmissionStatus; label: string }[] = [
@@ -18,30 +22,40 @@ const STATUS_OPTIONS: { value: "all" | SubmissionStatus; label: string }[] = [
   { value: "cancelled", label: "Отменени" },
 ];
 
+type SubmissionSortKey = "vh" | "service" | "citizen" | "status" | "submittedAt";
+
 export default function AdminSubmissions() {
   const { municipalityId } = useCurrentMunicipality();
   const [statusFilter, setStatusFilter] = useState<"all" | SubmissionStatus>("all");
-  const [query, setQuery] = useState("");
 
   const { data: submissions, isLoading } = useQuery({
     queryKey: ["admin", "submissions", municipalityId],
     queryFn: () => baserow.listSubmissions(municipalityId),
   });
 
-  const filtered = useMemo(() => {
-    const q = query.toLowerCase().trim();
-    return (submissions ?? []).filter((s) => {
-      const matchStatus = statusFilter === "all" || getStatus(s) === statusFilter;
-      const matchQuery =
-        !q ||
-        s["Submission Citizen Name"]?.toLowerCase().includes(q) ||
-        s["Submission Citizen Email"]?.toLowerCase().includes(q) ||
-        s["Submission UUID"]?.toLowerCase().includes(q) ||
-        s["Submission VH Number"]?.toLowerCase().includes(q) ||
-        s["Submission Linked Service"]?.[0]?.value?.toLowerCase().includes(q);
-      return matchStatus && matchQuery;
-    });
-  }, [submissions, statusFilter, query]);
+  const statusFiltered = (submissions ?? []).filter(
+    (s) => statusFilter === "all" || getStatus(s) === statusFilter,
+  );
+
+  const table = useTableControls<Submission, SubmissionSortKey>({
+    rows: statusFiltered,
+    searchFields: (s) => [
+      s["Submission Citizen Name"],
+      s["Submission Citizen Email"],
+      s["Submission UUID"],
+      s["Submission VH Number"],
+      s["Submission Linked Service"]?.[0]?.value,
+    ],
+    sorters: {
+      vh: (s) => s["Submission VH Number"] ?? s.id,
+      service: (s) => s["Submission Linked Service"]?.[0]?.value ?? "",
+      citizen: (s) => s["Submission Citizen Name"] ?? "",
+      status: (s) => getStatus(s) ?? "",
+      submittedAt: (s) =>
+        s["Submission Submitted At"] ?? s["Submission Created On"] ?? "",
+    },
+    defaultSort: { key: "submittedAt", direction: "desc" },
+  });
 
   return (
     <div className="space-y-6">
@@ -53,15 +67,11 @@ export default function AdminSubmissions() {
       </div>
 
       <div className="flex flex-col md:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Търси по име, имейл, услуга, ВХ №…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="pl-9"
-          />
-        </div>
+        <SearchBar
+          value={table.query}
+          onChange={table.setQuery}
+          placeholder="Търси по име, имейл, услуга, ВХ №…"
+        />
       </div>
 
       <div className="flex gap-2 flex-wrap">
@@ -91,15 +101,45 @@ export default function AdminSubmissions() {
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th className="px-4 py-2 font-medium">ВХ №</th>
-                <th className="px-4 py-2 font-medium">Услуга</th>
-                <th className="px-4 py-2 font-medium">Гражданин</th>
-                <th className="px-4 py-2 font-medium">Статус</th>
-                <th className="px-4 py-2 font-medium">Подадено</th>
+                <SortableHeader
+                  label="ВХ №"
+                  sortKey="vh"
+                  activeKey={table.sortKey}
+                  direction={table.sortDir}
+                  onSort={table.toggleSort}
+                />
+                <SortableHeader
+                  label="Услуга"
+                  sortKey="service"
+                  activeKey={table.sortKey}
+                  direction={table.sortDir}
+                  onSort={table.toggleSort}
+                />
+                <SortableHeader
+                  label="Гражданин"
+                  sortKey="citizen"
+                  activeKey={table.sortKey}
+                  direction={table.sortDir}
+                  onSort={table.toggleSort}
+                />
+                <SortableHeader
+                  label="Статус"
+                  sortKey="status"
+                  activeKey={table.sortKey}
+                  direction={table.sortDir}
+                  onSort={table.toggleSort}
+                />
+                <SortableHeader
+                  label="Подадено"
+                  sortKey="submittedAt"
+                  activeKey={table.sortKey}
+                  direction={table.sortDir}
+                  onSort={table.toggleSort}
+                />
               </tr>
             </thead>
             <tbody className="divide-y">
-              {filtered.map((s) => (
+              {table.pageRows.map((s) => (
                 <tr key={s.id} className="hover:bg-accent/40">
                   <td className="px-4 py-3">
                     <Link
@@ -130,7 +170,7 @@ export default function AdminSubmissions() {
                   </td>
                 </tr>
               ))}
-              {filtered.length === 0 && !isLoading && (
+              {table.totalFiltered === 0 && !isLoading && (
                 <tr>
                   <td colSpan={5} className="p-8 text-center text-muted-foreground text-sm">
                     Няма заявления по критериите.
@@ -139,6 +179,14 @@ export default function AdminSubmissions() {
               )}
             </tbody>
           </table>
+
+          <Pagination
+            page={table.page}
+            totalPages={table.totalPages}
+            totalFiltered={table.totalFiltered}
+            pageSize={table.pageSize}
+            onPageChange={table.setPage}
+          />
         </div>
       )}
     </div>

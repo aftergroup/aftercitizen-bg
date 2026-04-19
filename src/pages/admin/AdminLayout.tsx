@@ -1,6 +1,6 @@
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { useAuth0 } from "@auth0/auth0-react";
-import { Building2, FileText, LogOut, Users2 } from "lucide-react";
+import { Building2, FileText, FormInput, LogOut, Users2 } from "lucide-react";
 import { useCurrentMunicipality } from "@/lib/currentMunicipality";
 import { useUserSync } from "@/hooks/useUserSync";
 
@@ -34,6 +34,9 @@ export default function AdminLayout() {
         <nav className="flex-1 p-2 text-sm space-y-1">
           <AdminNavItem to="/admin/submissions" icon={<FileText className="h-4 w-4" />}>
             Заявления
+          </AdminNavItem>
+          <AdminNavItem to="/admin/forms" icon={<FormInput className="h-4 w-4" />}>
+            Формуляри
           </AdminNavItem>
           <AdminNavItem to="/admin/users" icon={<Users2 className="h-4 w-4" />}>
             Потребители

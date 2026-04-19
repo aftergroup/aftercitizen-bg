@@ -11,6 +11,7 @@ import AdminSubmissions from "./pages/admin/AdminSubmissions";
 import AdminSubmissionDetail from "./pages/admin/AdminSubmissionDetail";
 import AdminUsers from "./pages/admin/AdminUsers";
 import AdminDepartments from "./pages/admin/AdminDepartments";
+import AdminForms from "./pages/admin/AdminForms";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { baserow } from "./lib/baserow";
 
@@ -256,6 +257,7 @@ function AppRoutes() {
         <Route index element={<Navigate to="submissions" replace />} />
         <Route path="submissions" element={<AdminSubmissions />} />
         <Route path="submissions/:id" element={<AdminSubmissionDetail />} />
+        <Route path="forms" element={<AdminForms />} />
         <Route path="users" element={<AdminUsers />} />
         <Route path="departments" element={<AdminDepartments />} />
       </Route>

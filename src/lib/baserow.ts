@@ -109,6 +109,26 @@ export const baserow = {
     return (await res.json()) as AdminUser;
   },
 
+  /** List forms scoped to a municipality (or all if id is omitted). */
+  listFormsForMunicipality(municipalityId?: number) {
+    const params: Record<string, string | number> = {};
+    if (municipalityId) {
+      params["filter__Form Linked Municipality__link_row_has"] = municipalityId;
+    }
+    return list<Form>(T.forms, params);
+  },
+
+  async updateForm(id: number, patch: Partial<Form>): Promise<Form> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (TOKEN) headers.Authorization = `Token ${TOKEN}`;
+    const res = await fetch(
+      `${API}/api/database/rows/table/${T.forms}/${id}/?user_field_names=true`,
+      { method: "PATCH", headers, body: JSON.stringify(patch) }
+    );
+    if (!res.ok) throw new Error(`Form update failed: ${res.status}`);
+    return (await res.json()) as Form;
+  },
+
   /**
    * List submissions scoped to a single municipality. Uses Baserow's
    * server-side link-row filter so we only transfer rows the caller
