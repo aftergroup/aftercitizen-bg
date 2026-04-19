@@ -16,8 +16,9 @@ export function useIsAdmin(): {
   isSuperAdmin: boolean;
   isLoading: boolean;
 } {
-  const { baserowUser, isLoading, isSyncing, isAuthenticated } = useUserSync();
-  const role = baserowUser?.["User Linked User Role"]?.[0]?.value ?? "";
+  const { baserowUser, roleName, isLoading, isSyncing, isAuthenticated } =
+    useUserSync();
+  const role = roleName;
   // When Auth0 has resolved but the provider hasn't produced a synced
   // row yet (first tick before `setIsSyncing(true)` is applied), treat
   // the session as still loading so we don't flash "access denied".
