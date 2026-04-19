@@ -1,9 +1,12 @@
 /**
  * Shared right-side slide-in drawer for add/edit flows in the admin panel.
  *
- * Fixed at 60% viewport width on desktop, full-width on mobile. Closes on
- * Escape or backdrop click. Locks body scroll while open so long forms
- * inside the drawer don't scroll the page underneath.
+ * 60% viewport width on desktop, full-width on mobile. The 500ms ease-out
+ * slide is paired with an opacity fade on the backdrop so both transitions
+ * land together. The backdrop combines a 60% black overlay with a slight
+ * blur so the page behind isn't a distracting silhouette while the drawer
+ * is open. Closes on Escape or backdrop click; locks body scroll while
+ * open so long forms inside the drawer don't scroll the page underneath.
  */
 import { useEffect } from "react";
 import { X } from "lucide-react";
@@ -38,7 +41,7 @@ export function Drawer({ open, onClose, title, description, footer, children }: 
       aria-hidden={!open}
     >
       <div
-        className={`absolute inset-0 bg-black/40 transition-opacity ${
+        className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-500 ease-out ${
           open ? "opacity-100" : "opacity-0"
         }`}
         onClick={onClose}
@@ -47,7 +50,7 @@ export function Drawer({ open, onClose, title, description, footer, children }: 
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`absolute top-0 right-0 h-full w-full bg-white shadow-xl flex flex-col transform transition-transform duration-200 ${
+        className={`absolute top-0 right-0 bottom-0 w-full md:w-[60vw] bg-white shadow-2xl flex flex-col transform transition-transform duration-500 ease-out ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
       >
