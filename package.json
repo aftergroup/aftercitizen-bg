@@ -8,7 +8,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "render:blanks": "tsx scripts/render-blank-pdfs.mts"
+    "render:blanks": "tsx scripts/render-blank-pdfs.mts",
+    "baserow:patch": "tsx scripts/baserow-patch.mts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
