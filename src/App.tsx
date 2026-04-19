@@ -25,6 +25,7 @@ import ProfilePage, {
 } from "./pages/profile/ProfilePage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { AuthRoute } from "./components/AuthRoute";
+import { UserSyncProvider } from "./hooks/useUserSync";
 import { baserow } from "./lib/baserow";
 
 const AUTH0_DOMAIN = import.meta.env.VITE_AUTH0_DOMAIN;
@@ -54,7 +55,7 @@ function Auth0ProviderWithNavigate({ children }: { children: React.ReactNode }) 
       cacheLocation="localstorage"
       useRefreshTokens={true}
     >
-      {children}
+      <UserSyncProvider>{children}</UserSyncProvider>
     </Auth0Provider>
   );
 }

@@ -48,7 +48,7 @@ export default function DocumentsTab({ user }: { user: AdminUser }) {
         ) : (
           <div className="border rounded-md overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <thead className="bg-muted/40 text-left text-xs tracking-wide text-muted-foreground">
                 <tr>
                   <th className="px-4 py-2 font-medium">Тип</th>
                   <th className="px-4 py-2 font-medium">Номер</th>

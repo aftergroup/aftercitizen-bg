@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { baserow } from "@/lib/baserow";
@@ -13,10 +13,10 @@ import { RowActions } from "@/components/admin/RowActions";
 import { Drawer } from "@/components/Drawer";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button, Input } from "@/components/ui";
-import { Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, Mail, Phone, Plus } from "lucide-react";
 import type { AdminUser, MunicipalDepartment } from "@/lib/types";
 
-type DeptSortKey = "name" | "type" | "manager" | "email";
+type DeptSortKey = "name" | "type" | "manager";
 
 export default function AdminDepartments() {
   const { municipalityId } = useCurrentMunicipality();
@@ -33,6 +33,7 @@ export default function AdminDepartments() {
   const [editing, setEditing] = useState<MunicipalDepartment | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<MunicipalDepartment | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
 
   const scoped = (data ?? []).filter(
     (d) => d["Municipal Department Linked Municipality"]?.[0]?.id === municipalityId,
@@ -51,7 +52,6 @@ export default function AdminDepartments() {
       name: (d) => d["Municipal Department Name BG"] ?? "",
       type: (d) => d["Municipal Department Linked Unit Type"]?.[0]?.value ?? "",
       manager: (d) => d["Municipal Department Linked Manager"]?.[0]?.value ?? "",
-      email: (d) => d["Municipal Department Email"] ?? "",
     },
     defaultSort: { key: "name" },
   });
@@ -81,53 +81,98 @@ export default function AdminDepartments() {
       ) : (
         <div className="border rounded-lg overflow-hidden bg-white">
           <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <thead className="bg-muted/40 text-left text-xs tracking-wide text-muted-foreground">
               <tr>
+                <th className="w-8" />
                 <SortableHeader label="Наименование" sortKey="name" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
                 <SortableHeader label="Тип" sortKey="type" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
                 <SortableHeader label="Ръководител" sortKey="manager" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
-                <SortableHeader label="Имейл" sortKey="email" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
-                <th className="px-4 py-2 font-medium">Телефон</th>
-                <th className="px-4 py-2 font-medium text-right w-28">Действия</th>
+                <th className="px-4 py-2 font-medium text-right w-24">Действия</th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {table.pageRows.map((d) => (
-                <tr key={d.id} className="hover:bg-accent/40">
-                  <td className="px-4 py-3 font-medium">
-                    {d["Municipal Department Name BG"] || "—"}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {d["Municipal Department Linked Unit Type"]?.[0]?.value || "—"}
-                  </td>
-                  <td className="px-4 py-3">
-                    {d["Municipal Department Linked Manager"]?.[0]?.value || (
-                      <span className="text-muted-foreground">—</span>
+              {table.pageRows.map((d) => {
+                const isOpen = expandedId === d.id;
+                const hasDetails =
+                  !!d["Municipal Department Email"] ||
+                  !!d["Municipal Department Phone"];
+                return (
+                  <Fragment key={d.id}>
+                    <tr className="hover:bg-accent/40">
+                      <td className="pl-3 w-8">
+                        <button
+                          type="button"
+                          onClick={() => setExpandedId(isOpen ? null : d.id)}
+                          aria-label={isOpen ? "Свий" : "Разгъни"}
+                          className="h-7 w-7 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent"
+                          disabled={!hasDetails}
+                        >
+                          {isOpen ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
+                        </button>
+                      </td>
+                      <td className="px-4 py-3 font-medium">
+                        {d["Municipal Department Name BG"] || "—"}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {d["Municipal Department Linked Unit Type"]?.[0]?.value || "—"}
+                      </td>
+                      <td className="px-4 py-3">
+                        {d["Municipal Department Linked Manager"]?.[0]?.value || (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <RowActions
+                          onEdit={() => setEditing(d)}
+                          onDelete={() => setDeleting(d)}
+                        />
+                      </td>
+                    </tr>
+                    {isOpen && (
+                      <tr className="bg-muted/20">
+                        <td />
+                        <td colSpan={4} className="px-4 py-3">
+                          <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+                            <div className="flex items-center gap-2">
+                              <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                              {d["Municipal Department Email"] ? (
+                                <a
+                                  href={`mailto:${d["Municipal Department Email"]}`}
+                                  className="text-primary hover:underline"
+                                >
+                                  {d["Municipal Department Email"]}
+                                </a>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+                              {d["Municipal Department Phone"] ? (
+                                <a
+                                  href={`tel:${d["Municipal Department Phone"]}`}
+                                  className="text-primary hover:underline"
+                                >
+                                  {d["Municipal Department Phone"]}
+                                </a>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
                     )}
-                  </td>
-                  <td className="px-4 py-3">
-                    {d["Municipal Department Email"] ? (
-                      <a
-                        href={`mailto:${d["Municipal Department Email"]}`}
-                        className="text-primary hover:underline"
-                      >
-                        {d["Municipal Department Email"]}
-                      </a>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {d["Municipal Department Phone"] || "—"}
-                  </td>
-                  <td className="px-4 py-3">
-                    <RowActions onEdit={() => setEditing(d)} onDelete={() => setDeleting(d)} />
-                  </td>
-                </tr>
-              ))}
+                  </Fragment>
+                );
+              })}
               {table.totalFiltered === 0 && (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-muted-foreground text-sm">
+                  <td colSpan={5} className="p-8 text-center text-muted-foreground text-sm">
                     Няма регистрирани отдели в района.
                   </td>
                 </tr>

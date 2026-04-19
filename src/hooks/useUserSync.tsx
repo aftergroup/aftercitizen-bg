@@ -9,8 +9,21 @@
  * by `User Is Active` and a non-Citizen role (toggled by an admin from the
  * admin panel). If found, we keep email/first/last name in sync with the
  * Auth0 profile.
+ *
+ * Exposed as a React Context so the sync runs exactly once per session:
+ * every `useUserSync()` call reads from the same provider state instead
+ * of spinning up its own effect. Without this, components that call
+ * `useUserSync()` would each race their own sync on mount, producing
+ * "access denied" flashes for staff while a second instance caught up.
  */
-import { useEffect, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import { baserow } from "@/lib/baserow";
 import type { AdminUser } from "@/lib/types";
@@ -25,13 +38,26 @@ export interface UserSyncResult {
   isRestricted: boolean;
 }
 
-export function useUserSync(): UserSyncResult {
+const DEFAULT_UNAUTH_STATE: UserSyncResult = {
+  isLoading: false,
+  isSyncing: false,
+  isAuthenticated: false,
+  baserowUser: null,
+  isRestricted: false,
+};
+
+const UserSyncContext = createContext<UserSyncResult | null>(null);
+
+export function UserSyncProvider({ children }: { children: ReactNode }) {
   const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth0();
   const [isSyncing, setIsSyncing] = useState(false);
   const [baserowUser, setBaserowUser] = useState<AdminUser | null>(null);
 
   useEffect(() => {
-    if (!isAuthenticated || !user?.sub) return;
+    if (!isAuthenticated || !user?.sub) {
+      setBaserowUser(null);
+      return;
+    }
 
     let cancelled = false;
     setIsSyncing(true);
@@ -90,13 +116,35 @@ export function useUserSync(): UserSyncResult {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, user?.sub, user?.email, user?.given_name, user?.family_name, user?.name, user?.nickname]);
-
-  return {
-    isLoading: isAuthLoading,
-    isSyncing,
+  }, [
     isAuthenticated,
-    baserowUser,
-    isRestricted: baserowUser ? baserowUser["User Is Active"] !== true : false,
-  };
+    user?.sub,
+    user?.email,
+    user?.given_name,
+    user?.family_name,
+    user?.name,
+    user?.nickname,
+  ]);
+
+  const value = useMemo<UserSyncResult>(
+    () => ({
+      isLoading: isAuthLoading,
+      isSyncing,
+      isAuthenticated,
+      baserowUser,
+      isRestricted: baserowUser ? baserowUser["User Is Active"] !== true : false,
+    }),
+    [isAuthLoading, isSyncing, isAuthenticated, baserowUser],
+  );
+
+  return <UserSyncContext.Provider value={value}>{children}</UserSyncContext.Provider>;
+}
+
+/**
+ * Read the synced user from context. Returns a safe "unauthenticated"
+ * default when called outside the provider (e.g. on citizen-facing pages
+ * that don't mount Auth0) so components stay tolerant of both modes.
+ */
+export function useUserSync(): UserSyncResult {
+  return useContext(UserSyncContext) ?? DEFAULT_UNAUTH_STATE;
 }

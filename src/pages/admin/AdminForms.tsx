@@ -12,17 +12,19 @@ import {
 import { RowActions } from "@/components/admin/RowActions";
 import { Drawer } from "@/components/Drawer";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import PdfPreviewModal from "@/components/PdfPreviewModal";
 import { Button, Input } from "@/components/ui";
 import { Check, Eye, EyeOff, Plus } from "lucide-react";
 import type { Form } from "@/lib/types";
 
-type FormSortKey = "code" | "title" | "status" | "visible" | "modified";
+type FormSortKey = "code" | "title" | "visible" | "modified";
 
 export default function AdminForms() {
   const { municipalityId } = useCurrentMunicipality();
   const [editing, setEditing] = useState<Form | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<Form | null>(null);
+  const [previewing, setPreviewing] = useState<Form | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["admin", "forms", municipalityId],
@@ -35,7 +37,6 @@ export default function AdminForms() {
     sorters: {
       code: (f) => f["Form Code"] ?? "",
       title: (f) => f["Form Title BG"] ?? "",
-      status: (f) => getStatus(f) ?? "",
       visible: (f) => f["Form Is Visible"] ?? false,
       modified: (f) => f["Form Last Modified On"] ?? "",
     },
@@ -67,24 +68,22 @@ export default function AdminForms() {
       ) : (
         <div className="border rounded-lg overflow-hidden bg-white">
           <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <thead className="bg-muted/40 text-left text-xs tracking-wide text-muted-foreground">
               <tr>
-                <SortableHeader label="Код" sortKey="code" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
+                <SortableHeader label="Код" sortKey="code" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} className="w-24" />
                 <SortableHeader label="Наименование" sortKey="title" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
-                <SortableHeader label="Статус" sortKey="status" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
-                <SortableHeader label="Видим" sortKey="visible" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
-                <SortableHeader label="Последно" sortKey="modified" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
-                <th className="px-4 py-2 font-medium text-right w-28">Действия</th>
+                <SortableHeader label="Видим" sortKey="visible" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} className="w-28" />
+                <SortableHeader label="Последно" sortKey="modified" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} className="w-32" />
+                <th className="px-4 py-2 font-medium text-right w-24">Действия</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {table.pageRows.map((f) => (
-                <tr key={f.id} className="hover:bg-accent/40">
+                <tr key={f.id} className="hover:bg-accent/40 align-top">
                   <td className="px-4 py-3 font-medium text-primary">
                     {f["Form Code"] || "—"}
                   </td>
-                  <td className="px-4 py-3">{f["Form Title BG"] || "—"}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{getStatus(f) ?? "—"}</td>
+                  <td className="px-4 py-3 break-words">{f["Form Title BG"] || "—"}</td>
                   <td className="px-4 py-3">
                     <VisibilityBadge visible={f["Form Is Visible"]} />
                   </td>
@@ -93,6 +92,11 @@ export default function AdminForms() {
                   </td>
                   <td className="px-4 py-3">
                     <RowActions
+                      onPreview={
+                        f["Form Blank PDF R2 URL"]
+                          ? () => setPreviewing(f)
+                          : undefined
+                      }
                       onEdit={() => setEditing(f)}
                       onDelete={() => setDeleting(f)}
                     />
@@ -101,7 +105,7 @@ export default function AdminForms() {
               ))}
               {table.totalFiltered === 0 && (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-muted-foreground text-sm">
+                  <td colSpan={5} className="p-8 text-center text-muted-foreground text-sm">
                     Няма формуляри за този район.
                   </td>
                 </tr>
@@ -129,6 +133,14 @@ export default function AdminForms() {
       />
 
       <DeleteFormDialog form={deleting} onClose={() => setDeleting(null)} />
+
+      {previewing?.["Form Blank PDF R2 URL"] && (
+        <PdfPreviewModal
+          url={previewing["Form Blank PDF R2 URL"]}
+          filename={`${previewing["Form Code"]}.pdf`}
+          onClose={() => setPreviewing(null)}
+        />
+      )}
     </div>
   );
 }
@@ -222,20 +234,12 @@ function FormDrawer({
               placeholder="напр. GR-042"
             />
           </FieldRow>
-          <FieldRow label="Наименование BG *">
-            <Input
-              value={titleBg}
-              onChange={(e) => setTitleBg(e.target.value)}
-              placeholder="Издаване на…"
-            />
-          </FieldRow>
-          <FieldRow label="Title EN">
-            <Input
-              value={titleEn}
-              onChange={(e) => setTitleEn(e.target.value)}
-              placeholder="Optional English title"
-            />
-          </FieldRow>
+          <TitleField
+            titleBg={titleBg}
+            titleEn={titleEn}
+            onChangeBg={setTitleBg}
+            onChangeEn={setTitleEn}
+          />
           {!isCreate && form?.["Form Blank PDF R2 URL"] && (
             <FieldRow label="PDF образец">
               <a
@@ -246,13 +250,6 @@ function FormDrawer({
               >
                 Отвори
               </a>
-            </FieldRow>
-          )}
-          {!isCreate && (
-            <FieldRow label="Статус">
-              <span className="text-sm text-muted-foreground">
-                {getStatus(form!) ?? "—"}
-              </span>
             </FieldRow>
           )}
         </Section>
@@ -364,6 +361,69 @@ function FieldRow({ label, children }: { label: string; children: React.ReactNod
   );
 }
 
+/**
+ * Title editor with a BG/EN language toggle. A single multi-line textarea
+ * shows the currently-selected language so long titles wrap and don't get
+ * cropped by a single-line input. Both values stay in sync in the
+ * parent's state regardless of which language is visible.
+ */
+function TitleField({
+  titleBg,
+  titleEn,
+  onChangeBg,
+  onChangeEn,
+}: {
+  titleBg: string;
+  titleEn: string;
+  onChangeBg: (v: string) => void;
+  onChangeEn: (v: string) => void;
+}) {
+  const [lang, setLang] = useState<"bg" | "en">("bg");
+  const value = lang === "bg" ? titleBg : titleEn;
+  const onChange = lang === "bg" ? onChangeBg : onChangeEn;
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <label className="text-xs font-medium text-muted-foreground">
+          Наименование {lang === "bg" ? "*" : ""}
+        </label>
+        <div className="flex rounded-md border overflow-hidden text-xs">
+          <button
+            type="button"
+            onClick={() => setLang("bg")}
+            className={`px-2.5 py-1 transition-colors ${
+              lang === "bg"
+                ? "bg-primary text-primary-foreground"
+                : "hover:bg-accent text-muted-foreground"
+            }`}
+          >
+            BG
+          </button>
+          <button
+            type="button"
+            onClick={() => setLang("en")}
+            className={`px-2.5 py-1 transition-colors ${
+              lang === "en"
+                ? "bg-primary text-primary-foreground"
+                : "hover:bg-accent text-muted-foreground"
+            }`}
+          >
+            EN
+          </button>
+        </div>
+      </div>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        rows={3}
+        placeholder={lang === "bg" ? "Издаване на…" : "Optional English title"}
+        className="w-full rounded-md border bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"
+      />
+    </div>
+  );
+}
+
 function Toggle({ on }: { on: boolean }) {
   return (
     <div
@@ -393,12 +453,6 @@ function VisibilityBadge({ visible }: { visible?: boolean }) {
       <EyeOff className="h-3 w-3" /> скрит
     </span>
   );
-}
-
-function getStatus(f: Form): string | undefined {
-  const raw = f["Form Status"];
-  if (!raw) return undefined;
-  return typeof raw === "string" ? raw : raw.value;
 }
 
 function formatDate(iso?: string): string {

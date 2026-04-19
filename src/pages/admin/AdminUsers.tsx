@@ -12,7 +12,10 @@ import { RowActions } from "@/components/admin/RowActions";
 import { Drawer } from "@/components/Drawer";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button, Input } from "@/components/ui";
-import { Check, Plus, X } from "lucide-react";
+import { Check, KeyRound, Plus, X } from "lucide-react";
+import { useIsAdmin, SUPER_ADMIN_ROLE_NAME } from "@/hooks/useIsAdmin";
+import { translateRole } from "@/lib/roleTranslations";
+import { sendAuth0PasswordReset } from "@/lib/auth0";
 import type { AdminUser, UserRole } from "@/lib/types";
 
 type Tab = "users" | "roles";
@@ -71,6 +74,7 @@ function TabButton({
 type UserSortKey = "name" | "email" | "phone" | "role" | "active";
 
 function UsersTab() {
+  const { isSuperAdmin } = useIsAdmin();
   const { data: users, isLoading } = useQuery({
     queryKey: ["admin", "adminUsers"],
     queryFn: () => baserow.listAdminUsers(),
@@ -84,8 +88,14 @@ function UsersTab() {
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<AdminUser | null>(null);
 
+  // Non-super admins don't get to see (or manage) Super Administrator staff.
+  const visibleUsers = (users ?? []).filter((u) => {
+    if (isSuperAdmin) return true;
+    return u["User Linked User Role"]?.[0]?.value !== SUPER_ADMIN_ROLE_NAME;
+  });
+
   const table = useTableControls<AdminUser, UserSortKey>({
-    rows: users,
+    rows: visibleUsers,
     searchFields: (u) => [
       u["User Email"],
       u["User First Name"],
@@ -128,7 +138,7 @@ function UsersTab() {
 
       <div className="border rounded-lg overflow-hidden bg-white">
         <table className="w-full text-sm">
-          <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+          <thead className="bg-muted/40 text-left text-xs tracking-wide text-muted-foreground">
             <tr>
               <SortableHeader label="Име" sortKey="name" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
               <SortableHeader label="Имейл" sortKey="email" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
@@ -165,7 +175,9 @@ function UsersTab() {
                     {u["User Phone"] || "—"}
                   </td>
                   <td className="px-4 py-3">
-                    {u["User Linked User Role"]?.[0]?.value ?? (
+                    {u["User Linked User Role"]?.[0]?.value ? (
+                      translateRole(u["User Linked User Role"][0].value)
+                    ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
                   </td>
@@ -222,7 +234,12 @@ function UserDrawer({
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
+  const { isSuperAdmin } = useIsAdmin();
   const isCreate = !user;
+
+  const visibleRoles = isSuperAdmin
+    ? roles
+    : roles.filter((r) => r["User Role Name"] !== SUPER_ADMIN_ROLE_NAME);
 
   const [email, setEmail] = useState("");
   const [firstName, setFirstName] = useState("");
@@ -232,6 +249,7 @@ function UserDrawer({
   const [username, setUsername] = useState("");
   const [isActive, setIsActive] = useState(false);
   const [roleId, setRoleId] = useState<number | null>(null);
+  const [isSendingReset, setIsSendingReset] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -325,9 +343,9 @@ function UserDrawer({
               className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               <option value="">— Без роля —</option>
-              {roles.map((r) => (
+              {visibleRoles.map((r) => (
                 <option key={r.id} value={r.id}>
-                  {r["User Role Name"]}
+                  {translateRole(r["User Role Name"])}
                 </option>
               ))}
             </select>
@@ -342,6 +360,36 @@ function UserDrawer({
               Разрешен достъп до админ панела
             </label>
           </FieldRow>
+
+          {!isCreate && user?.["User Email"] && (
+            <FieldRow
+              label="Парола"
+              hint="Изпраща имейл на служителя с връзка за задаване на нова парола."
+            >
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isSendingReset}
+                onClick={async () => {
+                  setIsSendingReset(true);
+                  try {
+                    await sendAuth0PasswordReset(user!["User Email"]);
+                    toast.success(
+                      `Изпратен е имейл за смяна на парола до ${user!["User Email"]}`,
+                    );
+                  } catch (err) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    toast.error(`Грешка: ${msg}`);
+                  } finally {
+                    setIsSendingReset(false);
+                  }
+                }}
+              >
+                <KeyRound className="h-4 w-4" />
+                {isSendingReset ? "Изпращане…" : "Изпрати имейл за смяна"}
+              </Button>
+            </FieldRow>
+          )}
         </Section>
       </div>
     </Drawer>
@@ -389,6 +437,7 @@ function DeleteUserDialog({ user, onClose }: { user: AdminUser | null; onClose: 
 type RoleSortKey = "name" | "active";
 
 function RolesTab() {
+  const { isSuperAdmin } = useIsAdmin();
   const { data, isLoading } = useQuery({
     queryKey: ["admin", "userRoles"],
     queryFn: () => baserow.listUserRoles(),
@@ -398,8 +447,12 @@ function RolesTab() {
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<UserRole | null>(null);
 
+  const visibleRoles = (data ?? []).filter(
+    (r) => isSuperAdmin || r["User Role Name"] !== SUPER_ADMIN_ROLE_NAME,
+  );
+
   const table = useTableControls<UserRole, RoleSortKey>({
-    rows: data,
+    rows: visibleRoles,
     searchFields: (r) => [r["User Role Name"]],
     sorters: {
       name: (r) => r["User Role Name"] ?? "",
@@ -427,7 +480,7 @@ function RolesTab() {
 
       <div className="border rounded-lg overflow-hidden bg-white">
         <table className="w-full text-sm">
-          <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+          <thead className="bg-muted/40 text-left text-xs tracking-wide text-muted-foreground">
             <tr>
               <SortableHeader label="Наименование" sortKey="name" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
               <SortableHeader label="Активна" sortKey="active" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
@@ -437,7 +490,9 @@ function RolesTab() {
           <tbody className="divide-y">
             {table.pageRows.map((r) => (
               <tr key={r.id} className="hover:bg-accent/40">
-                <td className="px-4 py-3 font-medium">{r["User Role Name"] || "—"}</td>
+                <td className="px-4 py-3 font-medium">
+                  {translateRole(r["User Role Name"]) || "—"}
+                </td>
                 <td className="px-4 py-3">
                   <BoolBadge value={r["User Role Is Active"]} />
                 </td>
@@ -524,7 +579,11 @@ function RoleDrawer({
     <Drawer
       open={open}
       onClose={onClose}
-      title={isCreate ? "Нова роля" : `Редактиране · ${role?.["User Role Name"] ?? ""}`}
+      title={
+        isCreate
+          ? "Нова роля"
+          : `Редактиране · ${translateRole(role?.["User Role Name"]) || ""}`
+      }
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={mutation.isPending}>
@@ -582,7 +641,8 @@ function DeleteRoleDialog({ role, onClose }: { role: UserRole | null; onClose: (
       description={
         role ? (
           <>
-            Сигурни ли сте, че искате да изтриете ролята <b>{role["User Role Name"]}</b>?
+            Сигурни ли сте, че искате да изтриете ролята{" "}
+            <b>{translateRole(role["User Role Name"])}</b>?
           </>
         ) : null
       }
@@ -606,11 +666,20 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
+function FieldRow({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="space-y-1.5">
       <label className="text-xs font-medium text-muted-foreground">{label}</label>
       {children}
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
 }
