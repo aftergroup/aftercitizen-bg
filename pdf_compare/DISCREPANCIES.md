@@ -47,3 +47,67 @@ Shared observations across all TD forms:
 | GR-012, GR-014, GR-016, GR-018, GR-023 (civil status shell) | Title/subtitle correct, attachments + speed/format/delivery + signature footer correct. **Addressee "До кмета на ___" field is empty — should pre-fill "Район Триадица".** | [T] GR012Template — add prefill `Район Триадица` to addressee fill line. |
 | GR-017 | Layout matches official 2-page Наследници blank well. Field-code mismatches: template looks for `applicant_lnc`/`applicant_bulstat`/`applicant_ztr`/`applicant_fax` but Baserow has `applicant_lnch`/`applicant_bulstat_eik`/`applicant_ztr_eik`/`fax`. Deceased and heir fields likely also missing. | [B] Rename: field 8 `applicant_lnch` → `applicant_lnc`; field 9 `applicant_bulstat_eik` → `applicant_bulstat`; field 10 `applicant_ztr_eik` → `applicant_ztr`. [B] Audit `deceased_*`, `heir_N_*`, `delivery_*` fields exist and are linked to GR-017 form (id 15). |
 | GR-030 (zaverka) | Layout correct — title, applicant block, документи за заверка text area, fee section, delivery method, signature. Addressee empty (same as GR-012). | [T] ZaverkaDrugaDrzhavaTemplate — add `Район Триадица` prefill to addressee. |
+| ES-001 | Layout matches official Приложение № 2 well — top-right reference, ДО КМЕТА, title, declarant + association + building rows, founding date, 4 board tables (председател УС / членове УС / председател КС / членове КС), 4 attachments, declaration, GDPR, signature. **Board tables render as empty 1-row tables because the `chairman_us_*`, `member_us_*`, `chairman_cs_*`, `member_cs_*` field codes do not exist in Baserow.** | [B] Add 20 new fields per board role × 5 rows × 4 columns (name/address/phone/email): `chairman_us_1_name`…`chairman_us_5_email`, same for `member_us_*`, `chairman_cs_*`, `member_cs_*`. Link to ES-001 form (id 42) under a new section (e.g. `board`). [O] Or use a single repeatable-block field `board_members` instead. |
+| GDPR-001/002/003 | All three render correctly with right ПРИЛОЖЕНИЕ № 6/7/8 reference, identity block, "Заявявам, че:" body, variant-specific ground checkboxes (3 / 6 / 4 unique items), closing paragraph, Дата + ЗАЯВИТЕЛ. Spot-checked GDPR-001. Field-code mismatches: template uses `passport_date` but Baserow has `passport_issue_date`; template uses `request_ground` for ground-checkbox dispatch but field doesn't exist; template uses `records_check_date`/`records_check_place`/`foreigner_id_number` — none exist in Baserow. ID-doc fields fall back to `id_doc_*` and work. | [B] Rename field 95 `passport_issue_date` → `passport_date` (or add template fallback). [B] Add new fields: `request_ground` (select with entries: непълнота, неточност, грешка, не_са_необходими, оттеглям, възразявам, незаконосъобразно, правно_задължение, информационното_общество, оспорвам, неправомерно, не_се_нуждаете), `records_check_date` (date), `records_check_place` (text), `foreigner_id_number` (text). Link these to GDPR-001 (id 22), GDPR-002 (id 23), GDPR-003 (id 24). |
+| OS-002, OS-004, OS-005, OS-009, OS-011 | All 5 render correctly. OS-002 (housing card) has correct preset attachment + 4 slots. OS-004/009/011 share the certificate-request blank — title/applicant/free-text body + 3 fixed attachments + GDPR + signature all match. OS-005 archive copy variant has alternate 2-attachments list. | none — templates align to official. |
+| AA-001, AA-002 | Top header renders awkwardly: "До" / dotted-line / "на" / dotted-line / "(район/ кметство)" instead of compact "До кмета на район Триадица". Salutation says "Уважаеми г-н/г-жо **Главен архитект**" — official РА-УТ-039 blank goes to **Кмета** (not the chief architect). Attachments list shows only "1. Други документи" — official lists 3 fixed items: "1. Документ за собственост; 2. Актуална скица от АГКК — гр. София; 3. Други". | [T] AAAddressTemplate.tsx — fix top header to single-line "До кмета на район Триадица"; change salutation from "Главен архитект" to "Кмет"; expand attachments list to 3 official preset items + free-text "Други" slot. |
+
+## SI / UT — РА-УТ shell forms (shared issues)
+
+Spot-checked SI-001 (РА-УТ-008) and UT-042 (РА-УТ освидетелстване на сграда). All forms in this family share the same problems:
+
+1. **Awkward header layout** — "До" / dotted line / "на" / dotted line / "(район/ кметство)" with empty fill values, instead of the compact "До <Кмета|Главния архитект> на район Триадица" the official blank uses. Same as AA-001.
+2. **Missing От 2 / От 3 sections** — official РА-УТ blanks have 3 boxed applicant slots (От 1, От 2, От 3) with name/EИК/address/phone per slot. Templates render only От 1 because the form schemas don't reference `applicant_2_*` / `applicant_3_*` fields. The Baserow Field rows already exist (id 222–233); they just need Form-Field linkages on every SI/UT form.
+3. **Missing Вх. № top-left header** — official has "Вх. № _____ / 20___ г." top-left; templates omit it.
+4. **Missing form-code badge** — official has e.g. "РА-УТ-008", "РА-УТ-013" top-right corner. Templates omit it.
+
+| Code | Discrepancy | Patch |
+|------|-------------|-------|
+| SI-001 (РА-УТ-008) | All 4 shared issues above. Title/subtitle/property-location/attachments correct. Addressee = "Главния архитект" ✓. | [B] Add applicant_2_*/applicant_3_* (12 field links) to SI-001 form (id 50). [T] SIShellTemplate.tsx — fix header layout, render От 2/От 3 blocks when fields present, add Вх. № and form-code badge. |
+| UT-042 (РА-УТ освидетелстване на сграда) | All 4 shared issues. **Building-owner field renders as empty single line** despite the field being defined and linked (Form Field row 3027 → field 267 `building_owners`). Possible cause: template lookup `findField(schema, "building_owners")` may not match because the section is not linked correctly, or the section ID 8 (`request_details`) doesn't match what UTShellTemplate expects. Otherwise body is correct (condemn variant text "Моля, да бъде извършен оглед на сграда…", "(описват се всички собственици на сградата)" caption, 4 attachments). | [B] Field 267 already renamed to `building_owners` ✓ (done earlier). Verify section linkage on row 3027 — current section `request_details` (id 8); template likely scans the whole schema so should still find it. Confirm by re-rendering after Baserow batch. [B] Add applicant_2_*/applicant_3_* linkages. [T] Same UTShellTemplate header fixes as SI. |
+| All other SI-* / UT-* (~62 forms) | Identical shell, identical 4 issues. Per-form variant body sections (permit / visa / pup / delba / tech_passport / order_book / ekzekutivi / copy / certificate / moveable / addendum / notification / consent / bypass / condemn / investment_redraw) need separate visual verification but shell chrome is the dominating issue. | [B] **BULK** — apply applicant_2_*/applicant_3_* form-field linkages to all 63 SI-* + UT-* forms (756 rows). [T] Header / Вх. № / form-code badge fixes are template-side, applied once in SIShellTemplate.tsx and UTShellTemplate.tsx. |
+
+## HR — Човешки ресурси и правно обслужване
+
+| Code | Discrepancy | Patch |
+|------|-------------|-------|
+| HR-001 | 2-page МОЛБА + ДЕКЛАРАЦИЯ. Page 1: addressee "До Кмета на район Триадица" correctly prefilled, title "М О Л Б А" with subtitle "по чл. 118, ал. 1 от Кодекса на международното частно право", applicant identity block, "МОЛЯ" with 2 numbered statements (court name / case № / state / chl. 117 grounds), 4-item ПРИЛОЖЕНИЕ list, Дата + Подпис. Page 2: ДЕКЛАРАЦИЯ по чл. 117 КМЧП with declarant identity, "ДЕКЛАРИРАМ" + parties + case + state + 2 statements + чл. 313 reminder + ДЕКЛАРАТОР signature. Layout matches official well. | none |
+| HR-002 | 1-page МОЛБА за учредяване на настойничество и попечителство. Addressee prefilled, title/subtitle correct, applicant block with настоящ + постоянен адрес, ward block (поднастойния / попечителствания) with name, ЕГН, родствена връзка, л.к. №, постоянен/настоящ адрес, 4-item ПРИЛОЖЕНИЕ, signature footer. Matches official. | none |
+| HR-003, HR-004, HR-005 | Same shell variants per `TITLE` map in HRShellTemplate.tsx — service-specific subtitle. Trust by inspection: HR-001 + HR-002 visually correct → others should follow same pattern. Spot-check recommended after Baserow patches. | [O] Spot-check after re-render. |
+
+
+---
+
+## Baserow patch script
+
+All `[B]` items above are wired into `scripts/baserow-patch.mts`:
+
+```powershell
+# dry-run — prints what would change, no mutations
+npm run baserow:patch
+
+# apply everything (with auth)
+$env:BASEROW_EMAIL = "..."; $env:BASEROW_PASSWORD = "..."
+npm run baserow:patch -- --apply
+
+# run a single patch group
+npm run baserow:patch -- --apply --only=field-renames
+npm run baserow:patch -- --apply --only=new-fields,gr-forms
+npm run baserow:patch -- --apply --only=coapplicants
+```
+
+Patch groups (each can be run independently):
+
+| Group | What it does | Rows affected |
+|-------|--------------|--------------:|
+| `field-renames` | Rename 5 existing field codes to match template lookups (`child_name_after_recognition`, `applicant_lnc`, `applicant_bulstat`, `applicant_ztr`, `passport_date`). | 5 |
+| `new-fields` | Add 7 form-specific fields (mother_id_doc_*, GDPR records_check_*) + 80 ES-001 board fields (4 roles × 5 rows × 4 cols). De-dupes against existing codes. | up to 87 |
+| `gr-forms` | Add 17 missing GR Forms rows (GR-003, 011, 013, 015, 022, 024, 025, 026, 027, 028, 029, 031, 032, 033, 034, 035, 036) with Service link. | 17 |
+| `gr-form-fields` | Link new mother_* fields to GR-010 (form id 11). | 3 |
+| `gdpr-form-fields` | Link new request_ground / records_check_* / foreigner_id_number to GDPR-001/002/003. | 12 |
+| `es-form-fields` | Link 80 board fields to ES-001 (form id 42). | 80 |
+| `coapplicants` | Link applicant_2_* + applicant_3_* (12 fields) to all 63 SI/UT forms. | 756 |
+
+Run order is the script's natural order; subsequent patches reference the IDs the earlier ones create. Re-running after Baserow data changes is safe — `new-fields` and `gr-forms` skip rows whose codes already exist; `coapplicants` and `*-form-fields` will create duplicates if re-run, so use `--only=` selectively after the first apply.
+
+After running, re-run `npm run render:blanks -- --refresh` to verify the templates pick up the new schema.
