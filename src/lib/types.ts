@@ -158,8 +158,10 @@ export interface AdminUser {
   id: number;
   "User Email": string;
   "User First Name"?: string;
+  "User Middle Name"?: string;
   "User Last Name"?: string;
   "User Full Name"?: string;
+  "User First And Last Name"?: string;
   "User Appear As"?: string;
   "User Username"?: string;
   "User Phone"?: string;
@@ -182,6 +184,11 @@ export interface AdminUser {
   "User Preferred Delivery Method"?: { value: string } | string;
   "User Marketing Opt In"?: boolean;
   "User Notification Opt In"?: boolean;
+  // Work and social
+  "User Company"?: string;
+  "User Job Role"?: string;
+  "User Facebook URL"?: string;
+  "User LinkedIn URL"?: string;
   "User Created On"?: string;
   "User Last Modified On"?: string;
 }

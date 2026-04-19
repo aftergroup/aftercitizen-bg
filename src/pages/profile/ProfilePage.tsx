@@ -1,18 +1,23 @@
 /**
- * Universal /profile page — used by both citizens and staff. Tab-based
- * layout wraps every sub-area; each tab is a self-contained component so
- * they can be edited independently without touching the shell.
+ * Universal /profile page — used by both citizens and staff.
  *
  * Gated by AuthRoute (authentication required, no active/admin check) so
  * every authenticated Auth0 user can manage their own record in table
  * 2657 regardless of whether they've been granted staff access.
+ *
+ * Users whose `User Is Active` flag is set (anyone who can reach the admin
+ * panel) get the admin layout wrapped around /profile so the admin nav
+ * stays available next to the profile tabs. Citizens (and deactivated
+ * staff) get a dedicated single-purpose profile shell.
  */
+import { createContext, useContext } from "react";
+import { Link, NavLink, Navigate, Outlet, useLocation, useOutletContext } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Link, NavLink, Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth0 } from "@auth0/auth0-react";
-import { ArrowLeft, FileText, Files, Globe, Inbox, LogOut, MapPin, Settings, Shield, User, Users2 } from "lucide-react";
+import { ArrowLeft, Globe, LogOut } from "lucide-react";
 import { baserow } from "@/lib/baserow";
 import { useUserSync } from "@/hooks/useUserSync";
+import AdminLayout from "@/pages/admin/AdminLayout";
 
 import AccountTab from "./AccountTab";
 import PersonalTab from "./PersonalTab";
@@ -22,21 +27,11 @@ import RepresentationTab from "./RepresentationTab";
 import SettingsTab from "./SettingsTab";
 import SecurityTab from "./SecurityTab";
 import MySubmissionsTab from "./MySubmissionsTab";
-
-const TABS = [
-  { to: "account", label: "Профил", icon: User },
-  { to: "personal", label: "Лични данни", icon: FileText },
-  { to: "my-submissions", label: "Моите заявления", icon: Inbox },
-  { to: "documents", label: "Документи", icon: Files },
-  { to: "addresses", label: "Адреси", icon: MapPin },
-  { to: "representation", label: "Представителство", icon: Users2 },
-  { to: "settings", label: "Настройки", icon: Settings },
-  { to: "security", label: "Сигурност", icon: Shield },
-] as const;
+import { PROFILE_TABS } from "./tabs";
+import type { AdminUser } from "@/lib/types";
 
 export default function ProfilePage() {
-  const { logout } = useAuth0();
-  const { baserowUser } = useUserSync();
+  const { baserowUser, isRestricted } = useUserSync();
   const location = useLocation();
 
   // Refetch the user row whenever an edit succeeds — tabs emit this key
@@ -55,11 +50,52 @@ export default function ProfilePage() {
   const user = fresh ?? baserowUser;
   if (!user) return null;
 
-  // `/profile` bare → send to first tab.
   if (location.pathname === "/profile" || location.pathname === "/profile/") {
     return <Navigate to="/profile/account" replace />;
   }
 
+  // `User Is Active` === has access to the admin panel. Use the admin
+  // layout so their admin nav stays visible alongside the profile
+  // tabs exposed from the expandable "Моят профил" submenu.
+  if (!isRestricted) return <AdminProfileLayout user={user} />;
+
+  return <CitizenProfileLayout user={user} />;
+}
+
+function AdminProfileLayout({ user }: { user: AdminUser }) {
+  // AdminLayout already renders an Outlet; we feed it the user through
+  // outlet context so the tab pages can read it exactly like they do in
+  // the citizen shell.
+  return (
+    <OutletContextProvider user={user}>
+      <AdminLayout />
+    </OutletContextProvider>
+  );
+}
+
+/**
+ * Bridges AdminLayout's `<Outlet />` to the per-tab `useProfileUser` hook by
+ * re-rendering the inner outlet with our own context prop. This keeps tab
+ * pages layout-agnostic — they don't care whether they're nested inside
+ * AdminLayout or CitizenProfileLayout.
+ */
+function OutletContextProvider({
+  user,
+  children,
+}: {
+  user: AdminUser;
+  children: React.ReactNode;
+}) {
+  // The trick: we render children, and AdminLayout's Outlet picks up the
+  // matched child route. But we need `user` flowing through. We solve this
+  // by injecting `user` via React context (see the hook below).
+  return <ProfileUserContext.Provider value={user}>{children}</ProfileUserContext.Provider>;
+}
+
+const ProfileUserContext = createContext<AdminUser | null>(null);
+
+function CitizenProfileLayout({ user }: { user: AdminUser }) {
+  const { logout } = useAuth0();
   return (
     <div className="min-h-screen bg-muted/30 flex">
       <aside className="w-60 shrink-0 border-r bg-white flex flex-col">
@@ -72,7 +108,7 @@ export default function ProfilePage() {
         </Link>
 
         <nav className="flex-1 p-2 text-sm space-y-1">
-          {TABS.map((t) => (
+          {PROFILE_TABS.map((t) => (
             <NavLink
               key={t.to}
               to={`/profile/${t.to}`}
@@ -128,14 +164,15 @@ export default function ProfilePage() {
   );
 }
 
-// Thin page wrappers — each pulls the synced user from the outlet context
-// so they all share the same reference and all re-render together when
-// ProfilePage's query invalidates.
-import { useOutletContext } from "react-router-dom";
-import type { AdminUser } from "@/lib/types";
-
+// Thin page wrappers — read the synced user from either the outlet context
+// (citizen layout) or the React context provider (admin layout) so the tab
+// components stay layout-agnostic.
 function useProfileUser(): AdminUser {
-  return useOutletContext<{ user: AdminUser }>().user;
+  const ctx = useOutletContext<{ user: AdminUser } | undefined>();
+  const viaReactContext = useContext(ProfileUserContext);
+  const user = ctx?.user ?? viaReactContext;
+  if (!user) throw new Error("ProfileUserContext missing — is ProfilePage the parent route?");
+  return user;
 }
 
 export function AccountTabPage() {
