@@ -1,7 +1,14 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { baserow } from "@/lib/baserow";
+import {
+  Pagination,
+  SearchBar,
+  SortableHeader,
+  useTableControls,
+} from "@/components/admin/tableControls";
 import { Check, X } from "lucide-react";
+import type { AdminUser, UserRole } from "@/lib/types";
 
 type Tab = "users" | "roles";
 
@@ -54,82 +61,37 @@ function TabButton({
   );
 }
 
+type UserSortKey = "name" | "email" | "phone" | "role" | "active";
+
 function UsersTab() {
-  const { data: users, isLoading } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["admin", "adminUsers"],
     queryFn: () => baserow.listAdminUsers(),
   });
 
-  if (isLoading) {
-    return <div className="h-40 rounded-lg bg-muted/30 animate-pulse" />;
-  }
-
-  return (
-    <div className="border rounded-lg overflow-hidden bg-white">
-      <table className="w-full text-sm">
-        <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-          <tr>
-            <th className="px-4 py-2 font-medium">Име</th>
-            <th className="px-4 py-2 font-medium">Имейл</th>
-            <th className="px-4 py-2 font-medium">Телефон</th>
-            <th className="px-4 py-2 font-medium">Роля</th>
-            <th className="px-4 py-2 font-medium">Активен</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y">
-          {(users ?? []).map((u) => {
-            const fullName =
-              u["User Full Name"]?.trim() ||
-              [u["User First Name"], u["User Last Name"]].filter(Boolean).join(" ") ||
-              u["User Appear As"] ||
-              u["User Username"] ||
-              "—";
-            return (
-              <tr key={u.id} className="hover:bg-accent/40">
-                <td className="px-4 py-3 font-medium">{fullName}</td>
-                <td className="px-4 py-3">
-                  {u["User Email"] ? (
-                    <a
-                      href={`mailto:${u["User Email"]}`}
-                      className="text-primary hover:underline"
-                    >
-                      {u["User Email"]}
-                    </a>
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-muted-foreground">
-                  {u["User Phone"] || "—"}
-                </td>
-                <td className="px-4 py-3">
-                  {u["User Linked User Role"]?.[0]?.value ?? (
-                    <span className="text-muted-foreground">—</span>
-                  )}
-                </td>
-                <td className="px-4 py-3">
-                  <BoolBadge value={u["User Is Active"]} />
-                </td>
-              </tr>
-            );
-          })}
-          {(users ?? []).length === 0 && (
-            <tr>
-              <td colSpan={5} className="p-8 text-center text-muted-foreground text-sm">
-                Няма регистрирани служители.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function RolesTab() {
-  const { data: roles, isLoading } = useQuery({
-    queryKey: ["admin", "userRoles"],
-    queryFn: () => baserow.listUserRoles(),
+  const table = useTableControls<AdminUser, UserSortKey>({
+    rows: data,
+    searchFields: (u) => [
+      u["User Email"],
+      u["User First Name"],
+      u["User Last Name"],
+      u["User Full Name"],
+      u["User Username"],
+      u["User Phone"],
+      u["User Linked User Role"]?.[0]?.value,
+    ],
+    sorters: {
+      name: (u) =>
+        u["User Full Name"] ||
+        [u["User First Name"], u["User Last Name"]].filter(Boolean).join(" ") ||
+        u["User Appear As"] ||
+        "",
+      email: (u) => u["User Email"] ?? "",
+      phone: (u) => u["User Phone"] ?? "",
+      role: (u) => u["User Linked User Role"]?.[0]?.value ?? "",
+      active: (u) => u["User Is Active"] ?? false,
+    },
+    defaultSort: { key: "name" },
   });
 
   if (isLoading) {
@@ -137,32 +99,144 @@ function RolesTab() {
   }
 
   return (
-    <div className="border rounded-lg overflow-hidden bg-white">
-      <table className="w-full text-sm">
-        <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-          <tr>
-            <th className="px-4 py-2 font-medium">Наименование</th>
-            <th className="px-4 py-2 font-medium">Активна</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y">
-          {(roles ?? []).map((r) => (
-            <tr key={r.id} className="hover:bg-accent/40">
-              <td className="px-4 py-3 font-medium">{r["User Role Name"] || "—"}</td>
-              <td className="px-4 py-3">
-                <BoolBadge value={r["User Role Is Active"]} />
-              </td>
-            </tr>
-          ))}
-          {(roles ?? []).length === 0 && (
+    <div className="space-y-3">
+      <SearchBar
+        value={table.query}
+        onChange={table.setQuery}
+        placeholder="Търси по име, имейл, роля…"
+      />
+      <div className="border rounded-lg overflow-hidden bg-white">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
-              <td colSpan={2} className="p-8 text-center text-muted-foreground text-sm">
-                Няма дефинирани роли.
-              </td>
+              <SortableHeader label="Име" sortKey="name" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
+              <SortableHeader label="Имейл" sortKey="email" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
+              <SortableHeader label="Телефон" sortKey="phone" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
+              <SortableHeader label="Роля" sortKey="role" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
+              <SortableHeader label="Активен" sortKey="active" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
             </tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y">
+            {table.pageRows.map((u) => {
+              const fullName =
+                u["User Full Name"]?.trim() ||
+                [u["User First Name"], u["User Last Name"]].filter(Boolean).join(" ") ||
+                u["User Appear As"] ||
+                u["User Username"] ||
+                "—";
+              return (
+                <tr key={u.id} className="hover:bg-accent/40">
+                  <td className="px-4 py-3 font-medium">{fullName}</td>
+                  <td className="px-4 py-3">
+                    {u["User Email"] ? (
+                      <a
+                        href={`mailto:${u["User Email"]}`}
+                        className="text-primary hover:underline"
+                      >
+                        {u["User Email"]}
+                      </a>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">
+                    {u["User Phone"] || "—"}
+                  </td>
+                  <td className="px-4 py-3">
+                    {u["User Linked User Role"]?.[0]?.value ?? (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <BoolBadge value={u["User Is Active"]} />
+                  </td>
+                </tr>
+              );
+            })}
+            {table.totalFiltered === 0 && (
+              <tr>
+                <td colSpan={5} className="p-8 text-center text-muted-foreground text-sm">
+                  Няма регистрирани служители.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        <Pagination
+          page={table.page}
+          totalPages={table.totalPages}
+          totalFiltered={table.totalFiltered}
+          pageSize={table.pageSize}
+          onPageChange={table.setPage}
+        />
+      </div>
+    </div>
+  );
+}
+
+type RoleSortKey = "name" | "active";
+
+function RolesTab() {
+  const { data, isLoading } = useQuery({
+    queryKey: ["admin", "userRoles"],
+    queryFn: () => baserow.listUserRoles(),
+  });
+
+  const table = useTableControls<UserRole, RoleSortKey>({
+    rows: data,
+    searchFields: (r) => [r["User Role Name"]],
+    sorters: {
+      name: (r) => r["User Role Name"] ?? "",
+      active: (r) => r["User Role Is Active"] ?? false,
+    },
+    defaultSort: { key: "name" },
+  });
+
+  if (isLoading) {
+    return <div className="h-40 rounded-lg bg-muted/30 animate-pulse" />;
+  }
+
+  return (
+    <div className="space-y-3">
+      <SearchBar
+        value={table.query}
+        onChange={table.setQuery}
+        placeholder="Търси роля…"
+      />
+      <div className="border rounded-lg overflow-hidden bg-white">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <tr>
+              <SortableHeader label="Наименование" sortKey="name" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
+              <SortableHeader label="Активна" sortKey="active" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {table.pageRows.map((r) => (
+              <tr key={r.id} className="hover:bg-accent/40">
+                <td className="px-4 py-3 font-medium">{r["User Role Name"] || "—"}</td>
+                <td className="px-4 py-3">
+                  <BoolBadge value={r["User Role Is Active"]} />
+                </td>
+              </tr>
+            ))}
+            {table.totalFiltered === 0 && (
+              <tr>
+                <td colSpan={2} className="p-8 text-center text-muted-foreground text-sm">
+                  Няма дефинирани роли.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        <Pagination
+          page={table.page}
+          totalPages={table.totalPages}
+          totalFiltered={table.totalFiltered}
+          pageSize={table.pageSize}
+          onPageChange={table.setPage}
+        />
+      </div>
     </div>
   );
 }

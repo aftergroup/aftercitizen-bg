@@ -57,10 +57,14 @@ export interface Form {
   id: number;
   "Form Code": string; // e.g. "GR-012"
   "Form Title BG": string;
+  "Form Title EN"?: string;
   "Form Blank PDF R2 URL"?: string;
   "Form Linked Template": LinkedRecord[];
+  "Form Linked Municipality"?: LinkedRecord[];
+  "Form Is Visible"?: boolean;
   "Form Status"?: { value: string } | string;
   "Form Notes"?: string;
+  "Form Last Modified On"?: string;
 }
 
 // Reusable form field definitions (the vocabulary)

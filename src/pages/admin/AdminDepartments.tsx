@@ -1,6 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { baserow } from "@/lib/baserow";
 import { useCurrentMunicipality } from "@/lib/currentMunicipality";
+import {
+  Pagination,
+  SearchBar,
+  SortableHeader,
+  useTableControls,
+} from "@/components/admin/tableControls";
+import type { MunicipalDepartment } from "@/lib/types";
+
+type DeptSortKey = "name" | "type" | "manager" | "email";
 
 export default function AdminDepartments() {
   const { municipalityId } = useCurrentMunicipality();
@@ -10,9 +19,27 @@ export default function AdminDepartments() {
     queryFn: () => baserow.listMunicipalDepartments(),
   });
 
-  const departments = (data ?? []).filter(
+  const scoped = (data ?? []).filter(
     (d) => d["Municipal Department Linked Municipality"]?.[0]?.id === municipalityId,
   );
+
+  const table = useTableControls<MunicipalDepartment, DeptSortKey>({
+    rows: scoped,
+    searchFields: (d) => [
+      d["Municipal Department Name BG"],
+      d["Municipal Department Name EN"],
+      d["Municipal Department Linked Manager"]?.[0]?.value,
+      d["Municipal Department Email"],
+      d["Municipal Department Phone"],
+    ],
+    sorters: {
+      name: (d) => d["Municipal Department Name BG"] ?? "",
+      type: (d) => d["Municipal Department Linked Unit Type"]?.[0]?.value ?? "",
+      manager: (d) => d["Municipal Department Linked Manager"]?.[0]?.value ?? "",
+      email: (d) => d["Municipal Department Email"] ?? "",
+    },
+    defaultSort: { key: "name" },
+  });
 
   return (
     <div className="space-y-6">
@@ -23,6 +50,12 @@ export default function AdminDepartments() {
         </p>
       </div>
 
+      <SearchBar
+        value={table.query}
+        onChange={table.setQuery}
+        placeholder="Търси по наименование, ръководител, имейл…"
+      />
+
       {isLoading ? (
         <div className="h-40 rounded-lg bg-muted/30 animate-pulse" />
       ) : (
@@ -30,15 +63,15 @@ export default function AdminDepartments() {
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th className="px-4 py-2 font-medium">Наименование</th>
-                <th className="px-4 py-2 font-medium">Тип</th>
-                <th className="px-4 py-2 font-medium">Ръководител</th>
-                <th className="px-4 py-2 font-medium">Имейл</th>
+                <SortableHeader label="Наименование" sortKey="name" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
+                <SortableHeader label="Тип" sortKey="type" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
+                <SortableHeader label="Ръководител" sortKey="manager" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
+                <SortableHeader label="Имейл" sortKey="email" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
                 <th className="px-4 py-2 font-medium">Телефон</th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {departments.map((d) => (
+              {table.pageRows.map((d) => (
                 <tr key={d.id} className="hover:bg-accent/40">
                   <td className="px-4 py-3 font-medium">
                     {d["Municipal Department Name BG"] || "—"}
@@ -68,7 +101,7 @@ export default function AdminDepartments() {
                   </td>
                 </tr>
               ))}
-              {departments.length === 0 && (
+              {table.totalFiltered === 0 && (
                 <tr>
                   <td colSpan={5} className="p-8 text-center text-muted-foreground text-sm">
                     Няма регистрирани отдели в района.
@@ -77,6 +110,13 @@ export default function AdminDepartments() {
               )}
             </tbody>
           </table>
+          <Pagination
+            page={table.page}
+            totalPages={table.totalPages}
+            totalFiltered={table.totalFiltered}
+            pageSize={table.pageSize}
+            onPageChange={table.setPage}
+          />
         </div>
       )}
     </div>
