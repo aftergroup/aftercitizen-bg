@@ -12,7 +12,19 @@ import AdminSubmissionDetail from "./pages/admin/AdminSubmissionDetail";
 import AdminUsers from "./pages/admin/AdminUsers";
 import AdminDepartments from "./pages/admin/AdminDepartments";
 import AdminForms from "./pages/admin/AdminForms";
+import AdminSettings from "./pages/admin/AdminSettings";
+import ProfilePage, {
+  AccountTabPage,
+  AddressesTabPage,
+  DocumentsTabPage,
+  MySubmissionsTabPage,
+  PersonalTabPage,
+  RepresentationTabPage,
+  SecurityTabPage,
+  SettingsTabPage,
+} from "./pages/profile/ProfilePage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { AuthRoute } from "./components/AuthRoute";
 import { baserow } from "./lib/baserow";
 
 const AUTH0_DOMAIN = import.meta.env.VITE_AUTH0_DOMAIN;
@@ -112,6 +124,13 @@ function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => void })
           >
             Всички услуги
           </Link>
+          <Link
+            to="/profile"
+            onClick={onClose}
+            className="block px-4 py-3 text-sm font-medium hover:bg-accent"
+          >
+            Моят профил
+          </Link>
 
           {categories && categories.length > 0 && (
             <>
@@ -185,7 +204,7 @@ function Layout() {
               <div className="text-xs text-muted-foreground truncate">Район Триадица</div>
             </div>
           </Link>
-          <nav className="hidden md:flex gap-6 text-sm">
+          <nav className="hidden md:flex gap-6 text-sm items-center">
             <Link to="/services" className="hover:text-primary transition-colors">
               Всички услуги
             </Link>
@@ -197,6 +216,12 @@ function Layout() {
             >
               Район Триадица
             </a>
+            <Link
+              to="/profile"
+              className="hover:text-primary transition-colors"
+            >
+              Моят профил
+            </Link>
           </nav>
           <button
             onClick={() => setMenuOpen(true)}
@@ -260,6 +285,25 @@ function AppRoutes() {
         <Route path="forms" element={<AdminForms />} />
         <Route path="users" element={<AdminUsers />} />
         <Route path="departments" element={<AdminDepartments />} />
+        <Route path="settings" element={<AdminSettings />} />
+      </Route>
+
+      <Route
+        path="profile"
+        element={
+          <AuthRoute>
+            <ProfilePage />
+          </AuthRoute>
+        }
+      >
+        <Route path="account" element={<AccountTabPage />} />
+        <Route path="personal" element={<PersonalTabPage />} />
+        <Route path="my-submissions" element={<MySubmissionsTabPage />} />
+        <Route path="documents" element={<DocumentsTabPage />} />
+        <Route path="addresses" element={<AddressesTabPage />} />
+        <Route path="representation" element={<RepresentationTabPage />} />
+        <Route path="settings" element={<SettingsTabPage />} />
+        <Route path="security" element={<SecurityTabPage />} />
       </Route>
     </Routes>
   );

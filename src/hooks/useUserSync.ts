@@ -3,15 +3,19 @@
  * pattern (src/docs/USER_AUTHENTICATION.md).
  *
  * After Auth0 finishes authenticating, we look up the matching row in the
- * staff `Users` table (2657) by `auth0_user_id`. If missing, we create it
- * with `User Is Active = false` so new staff start deactivated and must be
- * approved by an existing admin in Baserow before they can see the panel.
- * If found, we keep first/last name + email in sync with the Auth0 profile.
+ * `Users` table (2657) by `auth0_user_id`. If missing, we create it with
+ * the "Citizen" role linked by default — citizens can manage their own
+ * profile and submissions right away, while the staff panel remains gated
+ * by `User Is Active` and a non-Citizen role (toggled by an admin from the
+ * admin panel). If found, we keep email/first/last name in sync with the
+ * Auth0 profile.
  */
 import { useEffect, useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import { baserow } from "@/lib/baserow";
 import type { AdminUser } from "@/lib/types";
+
+const DEFAULT_ROLE_NAME = "Citizen";
 
 export interface UserSyncResult {
   isLoading: boolean;
@@ -53,8 +57,14 @@ export function useUserSync(): UserSyncResult {
             : existing;
           if (!cancelled) setBaserowUser(next);
         } else {
-          // New staff member — created deactivated so an existing admin has
-          // to flip `User Is Active` in Baserow before granting access.
+          // New sign-up — default to the Citizen role so the user can
+          // immediately manage their profile and their own submissions.
+          // Staff promotion happens in the admin panel (role change +
+          // `User Is Active` flip).
+          const roles = await baserow.listUserRoles();
+          const citizenRole = roles.find(
+            (r) => r["User Role Name"] === DEFAULT_ROLE_NAME,
+          );
           const created = await baserow.createAdminUser({
             "User Email": user.email ?? "",
             "User First Name": user.given_name ?? "",
@@ -63,6 +73,9 @@ export function useUserSync(): UserSyncResult {
             "User Username": user.nickname ?? user.email ?? "",
             "User Is Active": false,
             auth0_user_id: user.sub,
+            "User Linked User Role": citizenRole
+              ? [{ id: citizenRole.id, value: citizenRole["User Role Name"] }]
+              : [],
           });
           if (!cancelled) setBaserowUser(created);
         }

@@ -1,12 +1,14 @@
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { useAuth0 } from "@auth0/auth0-react";
-import { Building2, FileText, FormInput, LogOut, Users2 } from "lucide-react";
+import { Building2, FileText, FormInput, LogOut, Settings, User, Users2 } from "lucide-react";
 import { useCurrentMunicipality } from "@/lib/currentMunicipality";
 import { useUserSync } from "@/hooks/useUserSync";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 
 export default function AdminLayout() {
   const { municipality } = useCurrentMunicipality();
   const { baserowUser } = useUserSync();
+  const { isAdmin } = useIsAdmin();
   const { logout } = useAuth0();
 
   const displayName =
@@ -44,6 +46,16 @@ export default function AdminLayout() {
           <AdminNavItem to="/admin/departments" icon={<Building2 className="h-4 w-4" />}>
             Отдели
           </AdminNavItem>
+          {isAdmin && (
+            <AdminNavItem to="/admin/settings" icon={<Settings className="h-4 w-4" />}>
+              Настройки
+            </AdminNavItem>
+          )}
+          <div className="pt-3 mt-3 border-t">
+            <AdminNavItem to="/profile" icon={<User className="h-4 w-4" />}>
+              Моят профил
+            </AdminNavItem>
+          </div>
         </nav>
 
         <div className="p-4 border-t text-xs text-muted-foreground space-y-3">
