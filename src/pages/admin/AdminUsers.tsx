@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { baserow } from "@/lib/baserow";
 import {
   Pagination,
@@ -7,7 +8,11 @@ import {
   SortableHeader,
   useTableControls,
 } from "@/components/admin/tableControls";
-import { Check, X } from "lucide-react";
+import { RowActions } from "@/components/admin/RowActions";
+import { Drawer } from "@/components/Drawer";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { Button, Input } from "@/components/ui";
+import { Check, Plus, X } from "lucide-react";
 import type { AdminUser, UserRole } from "@/lib/types";
 
 type Tab = "users" | "roles";
@@ -61,16 +66,26 @@ function TabButton({
   );
 }
 
+// ======================= Staff users =======================
+
 type UserSortKey = "name" | "email" | "phone" | "role" | "active";
 
 function UsersTab() {
-  const { data, isLoading } = useQuery({
+  const { data: users, isLoading } = useQuery({
     queryKey: ["admin", "adminUsers"],
     queryFn: () => baserow.listAdminUsers(),
   });
+  const { data: roles } = useQuery({
+    queryKey: ["admin", "userRoles"],
+    queryFn: () => baserow.listUserRoles(),
+  });
+
+  const [editing, setEditing] = useState<AdminUser | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState<AdminUser | null>(null);
 
   const table = useTableControls<AdminUser, UserSortKey>({
-    rows: data,
+    rows: users,
     searchFields: (u) => [
       u["User Email"],
       u["User First Name"],
@@ -100,11 +115,17 @@ function UsersTab() {
 
   return (
     <div className="space-y-3">
-      <SearchBar
-        value={table.query}
-        onChange={table.setQuery}
-        placeholder="Търси по име, имейл, роля…"
-      />
+      <div className="flex gap-3">
+        <SearchBar
+          value={table.query}
+          onChange={table.setQuery}
+          placeholder="Търси по име, имейл, роля…"
+        />
+        <Button onClick={() => setCreating(true)}>
+          <Plus className="h-4 w-4" /> Нов служител
+        </Button>
+      </div>
+
       <div className="border rounded-lg overflow-hidden bg-white">
         <table className="w-full text-sm">
           <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -114,6 +135,7 @@ function UsersTab() {
               <SortableHeader label="Телефон" sortKey="phone" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
               <SortableHeader label="Роля" sortKey="role" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
               <SortableHeader label="Активен" sortKey="active" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
+              <th className="px-4 py-2 font-medium text-right w-28">Действия</th>
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -150,12 +172,15 @@ function UsersTab() {
                   <td className="px-4 py-3">
                     <BoolBadge value={u["User Is Active"]} />
                   </td>
+                  <td className="px-4 py-3">
+                    <RowActions onEdit={() => setEditing(u)} onDelete={() => setDeleting(u)} />
+                  </td>
                 </tr>
               );
             })}
             {table.totalFiltered === 0 && (
               <tr>
-                <td colSpan={5} className="p-8 text-center text-muted-foreground text-sm">
+                <td colSpan={6} className="p-8 text-center text-muted-foreground text-sm">
                   Няма регистрирани служители.
                 </td>
               </tr>
@@ -170,9 +195,196 @@ function UsersTab() {
           onPageChange={table.setPage}
         />
       </div>
+
+      <UserDrawer
+        open={!!editing || creating}
+        user={editing}
+        roles={roles ?? []}
+        onClose={() => {
+          setEditing(null);
+          setCreating(false);
+        }}
+      />
+      <DeleteUserDialog user={deleting} onClose={() => setDeleting(null)} />
     </div>
   );
 }
+
+function UserDrawer({
+  open,
+  user,
+  roles,
+  onClose,
+}: {
+  open: boolean;
+  user: AdminUser | null;
+  roles: UserRole[];
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const isCreate = !user;
+
+  const [email, setEmail] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [appearAs, setAppearAs] = useState("");
+  const [phone, setPhone] = useState("");
+  const [username, setUsername] = useState("");
+  const [isActive, setIsActive] = useState(false);
+  const [roleId, setRoleId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setEmail(user?.["User Email"] ?? "");
+      setFirstName(user?.["User First Name"] ?? "");
+      setLastName(user?.["User Last Name"] ?? "");
+      setAppearAs(user?.["User Appear As"] ?? "");
+      setPhone(user?.["User Phone"] ?? "");
+      setUsername(user?.["User Username"] ?? "");
+      setIsActive(user?.["User Is Active"] ?? false);
+      setRoleId(user?.["User Linked User Role"]?.[0]?.id ?? null);
+    }
+  }, [open, user]);
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const payload: Partial<AdminUser> = {
+        "User Email": email,
+        "User First Name": firstName || undefined,
+        "User Last Name": lastName || undefined,
+        "User Appear As": appearAs || undefined,
+        "User Username": username || undefined,
+        "User Phone": phone || undefined,
+        "User Is Active": isActive,
+        "User Linked User Role": roleId ? [{ id: roleId, value: "" }] : [],
+      };
+      return isCreate
+        ? baserow.createAdminUser(payload)
+        : baserow.updateAdminUser(user!.id, payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "adminUsers"] });
+      toast.success(isCreate ? "Служителят е създаден" : "Служителят е обновен");
+      onClose();
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Грешка: ${msg}`);
+    },
+  });
+
+  const canSave = !!email.trim();
+
+  return (
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title={isCreate ? "Нов служител" : `Редактиране · ${user?.["User Email"] ?? ""}`}
+      description={isCreate ? "Добавяне на нов служител" : undefined}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={mutation.isPending}>
+            Отказ
+          </Button>
+          <Button
+            disabled={!canSave || mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
+            {mutation.isPending ? "Запазване…" : isCreate ? "Създай" : "Запази"}
+          </Button>
+        </>
+      }
+    >
+      <div className="grid md:grid-cols-2 gap-6">
+        <Section title="Идентичност">
+          <FieldRow label="Имейл *">
+            <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" />
+          </FieldRow>
+          <FieldRow label="Потребителско име">
+            <Input value={username} onChange={(e) => setUsername(e.target.value)} />
+          </FieldRow>
+          <FieldRow label="Име">
+            <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+          </FieldRow>
+          <FieldRow label="Фамилия">
+            <Input value={lastName} onChange={(e) => setLastName(e.target.value)} />
+          </FieldRow>
+          <FieldRow label="Показвано име">
+            <Input value={appearAs} onChange={(e) => setAppearAs(e.target.value)} />
+          </FieldRow>
+          <FieldRow label="Телефон">
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+          </FieldRow>
+        </Section>
+
+        <Section title="Роля и достъп">
+          <FieldRow label="Роля">
+            <select
+              value={roleId ?? ""}
+              onChange={(e) => setRoleId(e.target.value ? Number(e.target.value) : null)}
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <option value="">— Без роля —</option>
+              {roles.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r["User Role Name"]}
+                </option>
+              ))}
+            </select>
+          </FieldRow>
+          <FieldRow label="Активен">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={isActive}
+                onChange={(e) => setIsActive(e.target.checked)}
+              />
+              Разрешен достъп до админ панела
+            </label>
+          </FieldRow>
+        </Section>
+      </div>
+    </Drawer>
+  );
+}
+
+function DeleteUserDialog({ user, onClose }: { user: AdminUser | null; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: () => baserow.deleteAdminUser(user!.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "adminUsers"] });
+      toast.success("Служителят е изтрит");
+      onClose();
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Грешка: ${msg}`);
+    },
+  });
+
+  return (
+    <ConfirmDialog
+      open={!!user}
+      onClose={onClose}
+      onConfirm={() => mutation.mutate()}
+      title="Изтриване на служител"
+      description={
+        user ? (
+          <>
+            Сигурни ли сте, че искате да изтриете <b>{user["User Email"]}</b>?
+            Действието не може да бъде върнато.
+          </>
+        ) : null
+      }
+      destructive
+      confirmLabel="Изтрий"
+      isPending={mutation.isPending}
+    />
+  );
+}
+
+// ======================= Roles =======================
 
 type RoleSortKey = "name" | "active";
 
@@ -181,6 +393,10 @@ function RolesTab() {
     queryKey: ["admin", "userRoles"],
     queryFn: () => baserow.listUserRoles(),
   });
+
+  const [editing, setEditing] = useState<UserRole | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState<UserRole | null>(null);
 
   const table = useTableControls<UserRole, RoleSortKey>({
     rows: data,
@@ -198,17 +414,24 @@ function RolesTab() {
 
   return (
     <div className="space-y-3">
-      <SearchBar
-        value={table.query}
-        onChange={table.setQuery}
-        placeholder="Търси роля…"
-      />
+      <div className="flex gap-3">
+        <SearchBar
+          value={table.query}
+          onChange={table.setQuery}
+          placeholder="Търси роля…"
+        />
+        <Button onClick={() => setCreating(true)}>
+          <Plus className="h-4 w-4" /> Нова роля
+        </Button>
+      </div>
+
       <div className="border rounded-lg overflow-hidden bg-white">
         <table className="w-full text-sm">
           <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
               <SortableHeader label="Наименование" sortKey="name" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
               <SortableHeader label="Активна" sortKey="active" activeKey={table.sortKey} direction={table.sortDir} onSort={table.toggleSort} />
+              <th className="px-4 py-2 font-medium text-right w-28">Действия</th>
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -218,11 +441,14 @@ function RolesTab() {
                 <td className="px-4 py-3">
                   <BoolBadge value={r["User Role Is Active"]} />
                 </td>
+                <td className="px-4 py-3">
+                  <RowActions onEdit={() => setEditing(r)} onDelete={() => setDeleting(r)} />
+                </td>
               </tr>
             ))}
             {table.totalFiltered === 0 && (
               <tr>
-                <td colSpan={2} className="p-8 text-center text-muted-foreground text-sm">
+                <td colSpan={3} className="p-8 text-center text-muted-foreground text-sm">
                   Няма дефинирани роли.
                 </td>
               </tr>
@@ -237,6 +463,154 @@ function RolesTab() {
           onPageChange={table.setPage}
         />
       </div>
+
+      <RoleDrawer
+        open={!!editing || creating}
+        role={editing}
+        onClose={() => {
+          setEditing(null);
+          setCreating(false);
+        }}
+      />
+      <DeleteRoleDialog role={deleting} onClose={() => setDeleting(null)} />
+    </div>
+  );
+}
+
+function RoleDrawer({
+  open,
+  role,
+  onClose,
+}: {
+  open: boolean;
+  role: UserRole | null;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const isCreate = !role;
+
+  const [name, setName] = useState("");
+  const [isActive, setIsActive] = useState(true);
+
+  useEffect(() => {
+    if (open) {
+      setName(role?.["User Role Name"] ?? "");
+      setIsActive(role?.["User Role Is Active"] ?? true);
+    }
+  }, [open, role]);
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const payload: Partial<UserRole> = {
+        "User Role Name": name,
+        "User Role Is Active": isActive,
+      };
+      return isCreate
+        ? baserow.createUserRole(payload)
+        : baserow.updateUserRole(role!.id, payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "userRoles"] });
+      toast.success(isCreate ? "Ролята е създадена" : "Ролята е обновена");
+      onClose();
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Грешка: ${msg}`);
+    },
+  });
+
+  return (
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title={isCreate ? "Нова роля" : `Редактиране · ${role?.["User Role Name"] ?? ""}`}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={mutation.isPending}>
+            Отказ
+          </Button>
+          <Button
+            disabled={!name.trim() || mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
+            {mutation.isPending ? "Запазване…" : isCreate ? "Създай" : "Запази"}
+          </Button>
+        </>
+      }
+    >
+      <div className="max-w-xl space-y-4">
+        <FieldRow label="Наименование *">
+          <Input value={name} onChange={(e) => setName(e.target.value)} />
+        </FieldRow>
+        <FieldRow label="Активна">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={isActive}
+              onChange={(e) => setIsActive(e.target.checked)}
+            />
+            Ролята може да се зачислява на служители
+          </label>
+        </FieldRow>
+      </div>
+    </Drawer>
+  );
+}
+
+function DeleteRoleDialog({ role, onClose }: { role: UserRole | null; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: () => baserow.deleteUserRole(role!.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "userRoles"] });
+      toast.success("Ролята е изтрита");
+      onClose();
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Грешка: ${msg}`);
+    },
+  });
+
+  return (
+    <ConfirmDialog
+      open={!!role}
+      onClose={onClose}
+      onConfirm={() => mutation.mutate()}
+      title="Изтриване на роля"
+      description={
+        role ? (
+          <>
+            Сигурни ли сте, че искате да изтриете ролята <b>{role["User Role Name"]}</b>?
+          </>
+        ) : null
+      }
+      destructive
+      confirmLabel="Изтрий"
+      isPending={mutation.isPending}
+    />
+  );
+}
+
+// ======================= Shared =======================
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-3">
+      <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {title}
+      </h3>
+      <div className="space-y-3">{children}</div>
+    </div>
+  );
+}
+
+function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-xs font-medium text-muted-foreground">{label}</label>
+      {children}
     </div>
   );
 }
