@@ -8,7 +8,7 @@
 import type {
   Category, Municipality, Service, Form, FieldDef, FieldType, Section,
   Dictionary, DictionaryEntry, FormField, RenderedForm, RenderedField,
-  AdminUser, UserRole, Submission, MunicipalDepartment,
+  AdminUser, UserRole, Submission, MunicipalDepartment, MunicipalUnitType,
   Country, Currency, IdentityDocument, Address, Settings,
 } from "./types";
 
@@ -32,6 +32,7 @@ const T = {
   userRoles: Number(import.meta.env.VITE_BASEROW_USER_ROLES_TABLE_ID ?? 2655),
   adminUsers: Number(import.meta.env.VITE_BASEROW_ADMIN_USERS_TABLE_ID ?? 2657),
   municipalDepartments: Number(import.meta.env.VITE_BASEROW_MUNICIPAL_DEPARTMENTS_TABLE_ID ?? 2658),
+  municipalUnitTypes: Number(import.meta.env.VITE_BASEROW_MUNICIPAL_UNIT_TYPES_TABLE_ID ?? 2656),
   identityDocuments: Number(import.meta.env.VITE_BASEROW_IDENTITY_DOCUMENTS_TABLE_ID ?? 2659),
   addresses: Number(import.meta.env.VITE_BASEROW_ADDRESSES_TABLE_ID ?? 2660),
   countries: Number(import.meta.env.VITE_BASEROW_COUNTRIES_TABLE_ID ?? 2654),
@@ -116,6 +117,7 @@ export const baserow = {
   listAdminUsers: () => list<AdminUser>(T.adminUsers),
   listUserRoles: () => list<UserRole>(T.userRoles),
   listMunicipalDepartments: () => list<MunicipalDepartment>(T.municipalDepartments),
+  listMunicipalUnitTypes: () => list<MunicipalUnitType>(T.municipalUnitTypes),
 
   /**
    * Look up the staff user row whose `auth0_user_id` matches the Auth0
@@ -125,6 +127,21 @@ export const baserow = {
   async findAdminUserByAuth0Id(auth0Id: string): Promise<AdminUser | null> {
     const rows = await list<AdminUser>(T.adminUsers, { search: auth0Id });
     return rows.find((u) => u.auth0_user_id === auth0Id) ?? null;
+  },
+
+  /**
+   * Look up the staff user row by email (case-insensitive). Used as a
+   * fallback when no row matches the Auth0 sub — covers the case where
+   * an admin provisioned the row before the employee first signed in
+   * and Auth0 already had an account for that email.
+   */
+  async findAdminUserByEmail(email: string): Promise<AdminUser | null> {
+    const normalized = email.toLowerCase();
+    const rows = await list<AdminUser>(T.adminUsers, { search: email });
+    return (
+      rows.find((u) => (u["User Email"] ?? "").toLowerCase() === normalized) ??
+      null
+    );
   },
 
   createAdminUser: (payload: Partial<AdminUser>) => createRow<AdminUser>(T.adminUsers, payload),

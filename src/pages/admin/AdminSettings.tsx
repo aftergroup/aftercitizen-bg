@@ -10,9 +10,10 @@
  * providers slot in without restructuring the tab.
  */
 import { useEffect, useState } from "react";
+import { Navigate, NavLink, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Lock } from "lucide-react";
+import { Check, CreditCard, Lock } from "lucide-react";
 import { baserow } from "@/lib/baserow";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { Button, Input } from "@/components/ui";
@@ -43,6 +44,8 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "maintenance", label: "Поддръжка" },
 ];
 
+const TAB_IDS = new Set<Tab>(TABS.map((t) => t.id));
+
 export default function AdminSettings() {
   const { isAdmin, isLoading: isAdminLoading } = useIsAdmin();
 
@@ -69,12 +72,20 @@ export default function AdminSettings() {
 }
 
 function SettingsEditor() {
-  const [tab, setTab] = useState<Tab>("general");
+  // Tab is URL-driven: /admin/settings/:tab. Bare /admin/settings is a
+  // route-level redirect to /admin/settings/general (see App.tsx). We
+  // still guard here in case someone navigates to an unknown slug.
+  const { tab: rawTab } = useParams<{ tab: string }>();
+  const tab = (rawTab && TAB_IDS.has(rawTab as Tab) ? rawTab : "general") as Tab;
 
   const { data, isLoading } = useQuery({
     queryKey: ["admin", "settings"],
     queryFn: () => baserow.getSettings(),
   });
+
+  if (rawTab && !TAB_IDS.has(rawTab as Tab)) {
+    return <Navigate to="/admin/settings/general" replace />;
+  }
 
   if (isLoading) {
     return <div className="h-40 rounded-lg bg-muted/30 animate-pulse" />;
@@ -103,17 +114,19 @@ function SettingsEditor() {
 
       <div className="border-b flex gap-1 flex-wrap">
         {TABS.map((t) => (
-          <button
+          <NavLink
             key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
-              tab === t.id
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
+            to={`/admin/settings/${t.id}`}
+            className={({ isActive }) =>
+              `px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
+                isActive
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`
+            }
           >
             {t.label}
-          </button>
+          </NavLink>
         ))}
       </div>
 
@@ -454,44 +467,113 @@ function LegalTab({ settings }: { settings: Settings }) {
   );
 }
 
+interface PaymentProvider {
+  id: string;
+  name: string;
+  description: string;
+  status: "active" | "available" | "coming_soon";
+}
+
+// Payment providers available to Bulgarian municipal portals. Only
+// Postbank is wired today — the rest render as selectable-but-inactive
+// placeholders until their contracts and certifications land. Kept in
+// one place so adding/retiring a provider is a single list edit.
+const PAYMENT_PROVIDERS: PaymentProvider[] = [
+  {
+    id: "postbank",
+    name: "Пощенска банка (Postbank)",
+    description:
+      "Интеграция с платежния портал на Пощенска банка. Основен оператор за такси към района.",
+    status: "active",
+  },
+  {
+    id: "epay",
+    name: "ePay.bg",
+    description:
+      "Плащане чрез ePay сметка или карта. Широко разпространен за комунални и общински такси.",
+    status: "available",
+  },
+  {
+    id: "easypay",
+    name: "EasyPay",
+    description:
+      "Плащане на каса в офисите на EasyPay в страната. Полезен за граждани без онлайн банкиране.",
+    status: "available",
+  },
+  {
+    id: "borica",
+    name: "Borica / BPay (карти)",
+    description: "Директно плащане с дебитна или кредитна карта през националния картов процесор.",
+    status: "available",
+  },
+  {
+    id: "stripe",
+    name: "Stripe",
+    description: "Картови плащания в лева и евро. Удобен за международни граждани.",
+    status: "coming_soon",
+  },
+  {
+    id: "paypal",
+    name: "PayPal",
+    description: "PayPal разплащания за граждани в чужбина.",
+    status: "coming_soon",
+  },
+  {
+    id: "bank_transfer",
+    name: "Банков превод",
+    description: "Ръчен банков превод по сметка на района (без онлайн потвърждение).",
+    status: "available",
+  },
+];
+
 function PaymentsTab() {
-  // Payment providers are not persisted in the Settings table yet; this
-  // tab is UI-ready so a future schema addition plugs in without
-  // restructuring the layout. Today Postbank is the only option.
-  const [postbankEnabled, setPostbankEnabled] = useState(true);
+  // Payment provider enablement isn't persisted in the Settings table
+  // yet. Local state is enough to render the intended UX; when the
+  // schema lands these flags become DB-backed without restructuring
+  // the tab.
+  const [enabled, setEnabled] = useState<Record<string, boolean>>({ postbank: true });
 
   return (
     <div className="space-y-4 max-w-4xl">
       <Card
         title="Платежни оператори"
-        description="Оператори, чрез които гражданите могат да заплащат таксите към администрацията."
+        description="Всички поддържани от платформата оператори. Отбележете тези, които искате да предложите на гражданите."
       >
         <div className="space-y-3">
-          <label className="flex items-start gap-3 p-4 border rounded-md cursor-pointer hover:bg-accent/40">
-            <input
-              type="checkbox"
-              checked={postbankEnabled}
-              onChange={(e) => setPostbankEnabled(e.target.checked)}
-              className="mt-0.5"
-            />
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <div className="font-medium text-sm">Пощенска банка (Postbank)</div>
-                <span className="inline-flex items-center bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full text-xs font-medium">
-                  активен
-                </span>
-              </div>
-              <div className="text-xs text-muted-foreground mt-0.5">
-                Интеграция с платежния портал на Пощенска банка. Използва
-                се като основен оператор за всички такси към района.
-              </div>
-            </div>
-          </label>
-
-          <div className="p-4 border border-dashed rounded-md text-sm text-muted-foreground bg-muted/20">
-            Допълнителни оператори (ePay, eBG, карти) ще бъдат добавени при
-            наличност на договор и сертификация.
-          </div>
+          {PAYMENT_PROVIDERS.map((p) => {
+            const isEnabled = !!enabled[p.id];
+            const isDisabled = p.status === "coming_soon";
+            return (
+              <label
+                key={p.id}
+                className={`flex items-start gap-3 p-4 border rounded-md transition-colors ${
+                  isDisabled
+                    ? "bg-muted/20 opacity-70 cursor-not-allowed"
+                    : "cursor-pointer hover:bg-accent/40"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={isEnabled}
+                  disabled={isDisabled}
+                  onChange={(e) =>
+                    setEnabled((prev) => ({ ...prev, [p.id]: e.target.checked }))
+                  }
+                  className="mt-0.5"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <CreditCard className="h-4 w-4 text-muted-foreground" />
+                    <div className="font-medium text-sm">{p.name}</div>
+                    <ProviderBadge status={p.status} enabled={isEnabled} />
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {p.description}
+                  </div>
+                </div>
+              </label>
+            );
+          })}
         </div>
       </Card>
 
@@ -501,6 +583,34 @@ function PaymentsTab() {
         </div>
       </Card>
     </div>
+  );
+}
+
+function ProviderBadge({
+  status,
+  enabled,
+}: {
+  status: PaymentProvider["status"];
+  enabled: boolean;
+}) {
+  if (status === "coming_soon") {
+    return (
+      <span className="inline-flex items-center bg-muted text-muted-foreground px-2 py-0.5 rounded-full text-xs font-medium">
+        очаквайте
+      </span>
+    );
+  }
+  if (enabled) {
+    return (
+      <span className="inline-flex items-center gap-1 bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full text-xs font-medium">
+        <Check className="h-3 w-3" /> активен
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center bg-muted text-muted-foreground px-2 py-0.5 rounded-full text-xs font-medium">
+      наличен
+    </span>
   );
 }
 
