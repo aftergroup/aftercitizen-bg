@@ -151,8 +151,9 @@ export interface RenderedForm {
 
 // ---------------- Admin-side entities ----------------
 
-// Staff user (table 2657 "Users"). Distinct from citizen users (table 2646).
-// Linked to a role from `User Roles` and authenticated via Auth0.
+// Universal user (table 2657 "Users"). Used for both staff (admin panel
+// gated by `User Is Active` + role) and citizens (anyone signed in via
+// Auth0 gets a row here, can manage their own profile/personal data).
 export interface AdminUser {
   id: number;
   "User Email": string;
@@ -166,8 +167,101 @@ export interface AdminUser {
   "User Linked User Role"?: LinkedRecord[];
   auth0_user_id?: string;
   "User Default Language"?: string;
+  // Personal data
+  "User EGN"?: string;
+  "User Date Of Birth"?: string;
+  "User Gender"?: { value: string } | string;
+  "User Nationality"?: LinkedRecord[];
+  "User Place Of Birth"?: string;
+  // Legal representation
+  "User Is Legal Representative"?: boolean;
+  "User Represented Person EGN"?: string;
+  "User Represented Person Full Name"?: string;
+  "User Represented Person Relation"?: { value: string } | string;
+  // Preferences
+  "User Preferred Delivery Method"?: { value: string } | string;
+  "User Marketing Opt In"?: boolean;
+  "User Notification Opt In"?: boolean;
   "User Created On"?: string;
   "User Last Modified On"?: string;
+}
+
+export interface Country {
+  id: number;
+  "Country Code"?: string;
+  "Country Name BG"?: string;
+  "Country Name EN"?: string;
+}
+
+export interface Currency {
+  id: number;
+  "Currency ISO Code": string;
+  "Currency Name (EN)"?: string;
+  "Currency Name (BG)"?: string;
+  "Currency Symbol"?: string;
+}
+
+// Singleton settings row driving application-wide configuration. Only
+// admins and super admins should edit these via the admin settings page.
+export interface Settings {
+  id: number;
+  "Settings Application Title"?: string;
+  "Settings Application Tagline"?: string;
+  "Settings Logo URL"?: string;
+  "Settings Default Language"?: { value: string } | string;
+  "Settings Date Format"?: { value: string } | string;
+  "Settings Time Format"?: { value: string } | string;
+  "Settings First Day Of Week"?: { value: string } | string;
+  "Settings Timezone"?: string;
+  "Settings Linked Default Currency"?: LinkedRecord[];
+  "Settings Linked Default Country"?: LinkedRecord[];
+  "Settings Site URL"?: string;
+  "Settings API URL"?: string;
+  "Settings Public Forms URL"?: string;
+  "Settings Support Email"?: string;
+  "Settings Support Phone"?: string;
+  "Settings Privacy Policy URL"?: string;
+  "Settings Terms URL"?: string;
+  "Settings Cookie Policy URL"?: string;
+  "Settings Email From Address"?: string;
+  "Settings Email From Name"?: string;
+  "Settings Maintenance Mode"?: boolean;
+  "Settings Maintenance Message"?: string;
+  "Settings Created On"?: string;
+  "Settings Last Modified On"?: string;
+}
+
+export interface IdentityDocument {
+  id: number;
+  "Identity Document Linked User"?: LinkedRecord[];
+  "Identity Document Type"?: { value: string } | string;
+  "Identity Document Number"?: string;
+  "Identity Document Issued By"?: string;
+  "Identity Document Issued On"?: string;
+  "Identity Document Valid Until"?: string;
+  "Identity Document Is Primary"?: boolean;
+  "Identity Document Created On"?: string;
+  "Identity Document Last Modified On"?: string;
+}
+
+export interface Address {
+  id: number;
+  "Address Linked User"?: LinkedRecord[];
+  "Address Type"?: { value: string } | string;
+  "Address Linked Country"?: LinkedRecord[];
+  "Address City"?: string;
+  "Address Postal Code"?: string;
+  "Address District"?: string;
+  "Address Residential Area"?: string;
+  "Address Street"?: string;
+  "Address Street Number"?: string;
+  "Address Block"?: string;
+  "Address Entrance"?: string;
+  "Address Floor"?: string;
+  "Address Apartment"?: string;
+  "Address Is Primary"?: boolean;
+  "Address Created On"?: string;
+  "Address Last Modified On"?: string;
 }
 
 export interface UserRole {

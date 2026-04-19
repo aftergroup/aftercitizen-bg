@@ -9,6 +9,7 @@ import type {
   Category, Municipality, Service, Form, FieldDef, FieldType, Section,
   Dictionary, DictionaryEntry, FormField, RenderedForm, RenderedField,
   AdminUser, UserRole, Submission, MunicipalDepartment,
+  Country, Currency, IdentityDocument, Address, Settings,
 } from "./types";
 
 const API = import.meta.env.VITE_BASEROW_API ?? "https://db2.aftergroup.org";
@@ -31,6 +32,11 @@ const T = {
   userRoles: Number(import.meta.env.VITE_BASEROW_USER_ROLES_TABLE_ID ?? 2655),
   adminUsers: Number(import.meta.env.VITE_BASEROW_ADMIN_USERS_TABLE_ID ?? 2657),
   municipalDepartments: Number(import.meta.env.VITE_BASEROW_MUNICIPAL_DEPARTMENTS_TABLE_ID ?? 2658),
+  identityDocuments: Number(import.meta.env.VITE_BASEROW_IDENTITY_DOCUMENTS_TABLE_ID ?? 2659),
+  addresses: Number(import.meta.env.VITE_BASEROW_ADDRESSES_TABLE_ID ?? 2660),
+  countries: Number(import.meta.env.VITE_BASEROW_COUNTRIES_TABLE_ID ?? 2654),
+  currencies: Number(import.meta.env.VITE_BASEROW_CURRENCIES_TABLE_ID ?? 2653),
+  settings: Number(import.meta.env.VITE_BASEROW_SETTINGS_TABLE_ID ?? 2663),
 };
 
 function authHeaders(): Record<string, string> {
@@ -161,6 +167,17 @@ export const baserow = {
     });
   },
 
+  /**
+   * List submissions filed by a specific citizen. Used by the `/profile`
+   * "my submissions" tab — Citizens see only their own rows, enforced by
+   * the server-side `link_row_has` filter on `Submission Linked User`.
+   */
+  listSubmissionsForUser(userId: number) {
+    return list<Submission>(T.submissions, {
+      "filter__Submission Linked User__link_row_has": userId,
+    });
+  },
+
   async getSubmission(id: number): Promise<Submission | null> {
     const res = await fetch(
       `${API}/api/database/rows/table/${T.submissions}/${id}/?user_field_names=true`,
@@ -174,6 +191,44 @@ export const baserow = {
   updateSubmission: (id: number, patch: Partial<Submission>) =>
     updateRow<Submission>(T.submissions, id, patch),
   deleteSubmission: (id: number) => deleteRow(T.submissions, id),
+
+  // --- Profile (per-user) sub-tables ------------------------------
+  listCountries: () => list<Country>(T.countries),
+
+  listIdentityDocumentsForUser: (userId: number) =>
+    list<IdentityDocument>(T.identityDocuments, {
+      "filter__Identity Document Linked User__link_row_has": userId,
+    }),
+  createIdentityDocument: (payload: Partial<IdentityDocument>) =>
+    createRow<IdentityDocument>(T.identityDocuments, payload),
+  updateIdentityDocument: (id: number, patch: Partial<IdentityDocument>) =>
+    updateRow<IdentityDocument>(T.identityDocuments, id, patch),
+  deleteIdentityDocument: (id: number) => deleteRow(T.identityDocuments, id),
+
+  listAddressesForUser: (userId: number) =>
+    list<Address>(T.addresses, {
+      "filter__Address Linked User__link_row_has": userId,
+    }),
+  createAddress: (payload: Partial<Address>) => createRow<Address>(T.addresses, payload),
+  updateAddress: (id: number, patch: Partial<Address>) =>
+    updateRow<Address>(T.addresses, id, patch),
+  deleteAddress: (id: number) => deleteRow(T.addresses, id),
+
+  // --- Application settings (singleton row in table 2663) ----------
+  listCurrencies: () => list<Currency>(T.currencies),
+
+  /**
+   * Fetch the first (singleton) row from the Settings table. Returns null
+   * if the table is empty — the admin UI should surface this as a first-run
+   * state rather than a hard error.
+   */
+  async getSettings(): Promise<Settings | null> {
+    const rows = await list<Settings>(T.settings, { size: 1 });
+    return rows[0] ?? null;
+  },
+
+  updateSettings: (id: number, patch: Partial<Settings>) =>
+    updateRow<Settings>(T.settings, id, patch),
 
   listFields: () => list<FieldDef>(T.fields),
   listFieldTypes: () => list<FieldType>(T.fieldTypes),
