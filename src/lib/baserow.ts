@@ -1,8 +1,26 @@
 /**
- * Baserow API client for AfterCitizen.
+ * Baserow client for AfterCitizen.
  *
- * Reads from DB 265 ("AfterCitizen | Triaditza") on db2.aftergroup.org.
- * All calls use `?user_field_names=true` so responses match the types in types.ts.
+ * This module holds NO Baserow credential. Every call goes to a Netlify
+ * Function that keeps the token server-side and decides what the caller may
+ * see:
+ *
+ *   public-data  anonymous reads of reference tables only (no personal data)
+ *   submit       create a submission; validates field codes against the form
+ *   me           the signed-in citizen's own profile, documents, addresses
+ *                and submissions -- scoped server-side by the verified token
+ *   admin        staff operations; requires an active, non-Citizen role
+ *
+ * The previous version shipped a workspace-wide token in the bundle and
+ * enforced per-user scoping with client-side query filters. Anyone could read
+ * the token from the page source, drop the filter, and retrieve every
+ * citizen's identity documents and addresses. That scoping is now applied
+ * server-side from the verified session and cannot be influenced by the
+ * browser.
+ *
+ * The exported `baserow` surface is unchanged, so call sites did not move.
+ * Methods that used to take a `userId` still accept one for compatibility, but
+ * the value is ignored: the server uses the id it derives from the token.
  */
 
 import type {
@@ -11,91 +29,67 @@ import type {
   AdminUser, UserRole, Submission, MunicipalDepartment, MunicipalUnitType,
   Country, Currency, IdentityDocument, Address, Settings,
 } from "./types";
+import { getAuthToken, requireAuthToken } from "./authToken";
 
-const API = import.meta.env.VITE_BASEROW_API ?? "https://db2.aftergroup.org";
-const TOKEN = import.meta.env.VITE_BASEROW_TOKEN ?? "";
+const FUNCTIONS = "/.netlify/functions";
 
-const T = {
-  categories: Number(import.meta.env.VITE_BASEROW_CATEGORIES_TABLE_ID ?? 2631),
-  municipalities: Number(import.meta.env.VITE_BASEROW_MUNICIPALITIES_TABLE_ID ?? 2632),
-  fieldTypes: Number(import.meta.env.VITE_BASEROW_FIELD_TYPES_TABLE_ID ?? 2634),
-  sections: Number(import.meta.env.VITE_BASEROW_FORM_SECTIONS_TABLE_ID ?? 2635),
-  dictionaries: Number(import.meta.env.VITE_BASEROW_DICTIONARIES_TABLE_ID ?? 2636),
-  dictionaryEntries: Number(import.meta.env.VITE_BASEROW_DICTIONARY_ENTRIES_TABLE_ID ?? 2637),
-  templates: Number(import.meta.env.VITE_BASEROW_FORM_TEMPLATES_TABLE_ID ?? 2638),
-  fields: Number(import.meta.env.VITE_BASEROW_FIELDS_TABLE_ID ?? 2639),
-  services: Number(import.meta.env.VITE_BASEROW_SERVICES_TABLE_ID ?? 2640),
-  forms: Number(import.meta.env.VITE_BASEROW_FORMS_TABLE_ID ?? 2643),
-  formFields: Number(import.meta.env.VITE_BASEROW_FORM_FIELDS_TABLE_ID ?? 2645),
-  submissions: Number(import.meta.env.VITE_BASEROW_SUBMISSIONS_TABLE_ID ?? 2647),
-  submissionValues: Number(import.meta.env.VITE_BASEROW_SUBMISSION_VALUES_TABLE_ID ?? 2648),
-  userRoles: Number(import.meta.env.VITE_BASEROW_USER_ROLES_TABLE_ID ?? 2655),
-  adminUsers: Number(import.meta.env.VITE_BASEROW_ADMIN_USERS_TABLE_ID ?? 2657),
-  municipalDepartments: Number(import.meta.env.VITE_BASEROW_MUNICIPAL_DEPARTMENTS_TABLE_ID ?? 2658),
-  municipalUnitTypes: Number(import.meta.env.VITE_BASEROW_MUNICIPAL_UNIT_TYPES_TABLE_ID ?? 2656),
-  identityDocuments: Number(import.meta.env.VITE_BASEROW_IDENTITY_DOCUMENTS_TABLE_ID ?? 2659),
-  addresses: Number(import.meta.env.VITE_BASEROW_ADDRESSES_TABLE_ID ?? 2660),
-  countries: Number(import.meta.env.VITE_BASEROW_COUNTRIES_TABLE_ID ?? 2654),
-  currencies: Number(import.meta.env.VITE_BASEROW_CURRENCIES_TABLE_ID ?? 2653),
-  settings: Number(import.meta.env.VITE_BASEROW_SETTINGS_TABLE_ID ?? 2663),
-};
-
-function authHeaders(): Record<string, string> {
+async function call<T>(
+  endpoint: string,
+  body: Record<string, unknown>,
+  auth: "none" | "optional" | "required" = "none",
+): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (TOKEN) headers.Authorization = `Token ${TOKEN}`;
-  return headers;
-}
 
-async function createRow<T>(tableId: number, payload: Partial<T>): Promise<T> {
-  const res = await fetch(
-    `${API}/api/database/rows/table/${tableId}/?user_field_names=true`,
-    { method: "POST", headers: authHeaders(), body: JSON.stringify(payload) },
-  );
-  if (!res.ok) throw new Error(`Baserow ${tableId} create failed: ${res.status}`);
-  return (await res.json()) as T;
-}
+  if (auth === "required") {
+    headers.Authorization = `Bearer ${await requireAuthToken()}`;
+  } else if (auth === "optional") {
+    const token = await getAuthToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+  }
 
-async function updateRow<T>(tableId: number, id: number, patch: Partial<T>): Promise<T> {
-  const res = await fetch(
-    `${API}/api/database/rows/table/${tableId}/${id}/?user_field_names=true`,
-    { method: "PATCH", headers: authHeaders(), body: JSON.stringify(patch) },
-  );
-  if (!res.ok) throw new Error(`Baserow ${tableId} update failed: ${res.status}`);
-  return (await res.json()) as T;
-}
-
-async function deleteRow(tableId: number, id: number): Promise<void> {
-  const res = await fetch(`${API}/api/database/rows/table/${tableId}/${id}/`, {
-    method: "DELETE",
-    headers: authHeaders(),
+  const res = await fetch(`${FUNCTIONS}/${endpoint}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
   });
-  if (!res.ok && res.status !== 204) {
-    throw new Error(`Baserow ${tableId} delete failed: ${res.status}`);
+
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const data = await res.json();
+      detail = data.error || detail;
+    } catch {
+      // keep statusText
+    }
+    throw new Error(`${endpoint} failed (${res.status}): ${detail}`);
   }
+
+  return (await res.json()) as T;
 }
 
-async function list<T>(tableId: number, params: Record<string, string | number> = {}): Promise<T[]> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (TOKEN) headers.Authorization = `Token ${TOKEN}`;
-
-  const all: T[] = [];
-  let page = 1;
-  while (true) {
-    const qs = new URLSearchParams({
-      user_field_names: "true",
-      size: "200",
-      page: String(page),
-      ...Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)])),
-    });
-    const res = await fetch(`${API}/api/database/rows/table/${tableId}/?${qs}`, { headers });
-    if (!res.ok) throw new Error(`Baserow ${tableId} fetch failed: ${res.status}`);
-    const data = await res.json();
-    all.push(...data.results);
-    if (!data.next) break;
-    page += 1;
-    if (page > 20) break; // safety cap
+/** Anonymous read of an allowlisted reference dataset. */
+async function publicList<T>(
+  dataset: string,
+  params?: Record<string, unknown>,
+): Promise<T[]> {
+  const body: Record<string, unknown> = { dataset };
+  if (params) {
+    body.query = dataset;
+    body.params = params;
+    delete body.dataset;
   }
-  return all;
+  const data = await call<{ results: T[] }>("public-data", body);
+  return data.results ?? [];
+}
+
+/** Signed-in citizen's own data. */
+function me<T>(action: string, args: Record<string, unknown> = {}): Promise<T> {
+  return call<T>("me", { action, ...args }, "required");
+}
+
+/** Staff-only operation. */
+function admin<T>(action: string, args: Record<string, unknown> = {}): Promise<T> {
+  return call<T>("admin", { action, ...args }, "required");
 }
 
 export interface ReferenceData {
@@ -108,150 +102,145 @@ export interface ReferenceData {
 }
 
 export const baserow = {
-  listCategories: () => list<Category>(T.categories),
-  listMunicipalities: () => list<Municipality>(T.municipalities),
-  listServices: () => list<Service>(T.services),
-  listForms: () => list<Form>(T.forms),
+  // --- Public reference data (anonymous) ---------------------------
+  listCategories: () => publicList<Category>("categories"),
+  listMunicipalities: () => publicList<Municipality>("municipalities"),
+  listServices: () => publicList<Service>("services"),
+  listForms: () => publicList<Form>("forms"),
+  listFields: () => publicList<FieldDef>("fields"),
+  listFieldTypes: () => publicList<FieldType>("fieldTypes"),
+  listSections: () => publicList<Section>("sections"),
+  listDictionaries: () => publicList<Dictionary>("dictionaries"),
+  listDictionaryEntries: () => publicList<DictionaryEntry>("dictionaryEntries"),
+  listCountries: () => publicList<Country>("countries"),
+  listCurrencies: () => publicList<Currency>("currencies"),
 
-  // --- Admin-side -------------------------------------------------
-  listAdminUsers: () => list<AdminUser>(T.adminUsers),
-  listUserRoles: () => list<UserRole>(T.userRoles),
-  listMunicipalDepartments: () => list<MunicipalDepartment>(T.municipalDepartments),
-  listMunicipalUnitTypes: () => list<MunicipalUnitType>(T.municipalUnitTypes),
+  listFormFieldsForForm: (formId: number) =>
+    publicList<FormField>("formFieldsForForm", { formId }),
 
-  /**
-   * Look up the staff user row whose `auth0_user_id` matches the Auth0
-   * subject. Uses Baserow's `search` first to narrow the result set, then
-   * filters on the exact field client-side (search matches across fields).
-   */
-  async findAdminUserByAuth0Id(auth0Id: string): Promise<AdminUser | null> {
-    const rows = await list<AdminUser>(T.adminUsers, { search: auth0Id });
-    return rows.find((u) => u.auth0_user_id === auth0Id) ?? null;
+  async getServiceByCode(code: string): Promise<Service | null> {
+    const rows = await publicList<Service>("serviceByCode", { code });
+    return rows[0] ?? null;
   },
 
-  /**
-   * Look up the staff user row by email (case-insensitive). Used as a
-   * fallback when no row matches the Auth0 sub — covers the case where
-   * an admin provisioned the row before the employee first signed in
-   * and Auth0 already had an account for that email.
-   */
-  async findAdminUserByEmail(email: string): Promise<AdminUser | null> {
-    const normalized = email.toLowerCase();
-    const rows = await list<AdminUser>(T.adminUsers, { search: email });
-    return (
-      rows.find((u) => (u["User Email"] ?? "").toLowerCase() === normalized) ??
-      null
-    );
+  async getFormByCode(code: string): Promise<Form | null> {
+    const rows = await publicList<Form>("formByCode", { code });
+    return rows[0] ?? null;
   },
 
-  createAdminUser: (payload: Partial<AdminUser>) => createRow<AdminUser>(T.adminUsers, payload),
+  // --- Staff-side (requires an active non-Citizen role) -------------
+  listAdminUsers: () => admin<{ results: AdminUser[] }>("listUsers").then((r) => r.results),
+  listUserRoles: () => admin<{ results: UserRole[] }>("listUserRoles").then((r) => r.results),
+  listMunicipalDepartments: () =>
+    admin<{ results: MunicipalDepartment[] }>("listDepartments").then((r) => r.results),
+  listMunicipalUnitTypes: () =>
+    admin<{ results: MunicipalUnitType[] }>("listUnitTypes").then((r) => r.results),
+
+  createAdminUser: (payload: Partial<AdminUser>) =>
+    admin<{ row: AdminUser }>("createUser", { payload }).then((r) => r.row),
   updateAdminUser: (id: number, patch: Partial<AdminUser>) =>
-    updateRow<AdminUser>(T.adminUsers, id, patch),
-  deleteAdminUser: (id: number) => deleteRow(T.adminUsers, id),
+    admin<{ row: AdminUser }>("updateUser", { id, patch }).then((r) => r.row),
+  deleteAdminUser: (id: number) => admin<void>("deleteUser", { id }).then(() => undefined),
 
-  createUserRole: (payload: Partial<UserRole>) => createRow<UserRole>(T.userRoles, payload),
+  createUserRole: (payload: Partial<UserRole>) =>
+    admin<{ row: UserRole }>("createUserRole", { payload }).then((r) => r.row),
   updateUserRole: (id: number, patch: Partial<UserRole>) =>
-    updateRow<UserRole>(T.userRoles, id, patch),
-  deleteUserRole: (id: number) => deleteRow(T.userRoles, id),
+    admin<{ row: UserRole }>("updateUserRole", { id, patch }).then((r) => r.row),
+  deleteUserRole: (id: number) => admin<void>("deleteUserRole", { id }).then(() => undefined),
 
   createMunicipalDepartment: (payload: Partial<MunicipalDepartment>) =>
-    createRow<MunicipalDepartment>(T.municipalDepartments, payload),
+    admin<{ row: MunicipalDepartment }>("createDepartment", { payload }).then((r) => r.row),
   updateMunicipalDepartment: (id: number, patch: Partial<MunicipalDepartment>) =>
-    updateRow<MunicipalDepartment>(T.municipalDepartments, id, patch),
-  deleteMunicipalDepartment: (id: number) => deleteRow(T.municipalDepartments, id),
-
-  /** List forms scoped to a municipality (or all if id is omitted). */
-  listFormsForMunicipality(municipalityId?: number) {
-    const params: Record<string, string | number> = {};
-    if (municipalityId) {
-      params["filter__Form Linked Municipality__link_row_has"] = municipalityId;
-    }
-    return list<Form>(T.forms, params);
-  },
-
-  createForm: (payload: Partial<Form>) => createRow<Form>(T.forms, payload),
-  updateForm: (id: number, patch: Partial<Form>) => updateRow<Form>(T.forms, id, patch),
-  deleteForm: (id: number) => deleteRow(T.forms, id),
+    admin<{ row: MunicipalDepartment }>("updateDepartment", { id, patch }).then((r) => r.row),
+  deleteMunicipalDepartment: (id: number) =>
+    admin<void>("deleteDepartment", { id }).then(() => undefined),
 
   /**
-   * List submissions scoped to a single municipality. Uses Baserow's
-   * server-side link-row filter so we only transfer rows the caller
-   * is actually allowed to see, instead of filtering client-side.
+   * Look up the signed-in user's own row. Kept for compatibility with the
+   * previous sync code -- the argument is ignored, because the server resolves
+   * the row from the verified token rather than a client-supplied identifier.
    */
-  listSubmissions(municipalityId: number) {
-    return list<Submission>(T.submissions, {
-      "filter__Submission Linked Municipality__link_row_has": municipalityId,
-    });
+  async findAdminUserByAuth0Id(_auth0Id?: string): Promise<AdminUser | null> {
+    const data = await me<{ user: AdminUser | null }>("getProfile");
+    return data.user;
   },
+
+  async findAdminUserByEmail(_email?: string): Promise<AdminUser | null> {
+    const data = await me<{ user: AdminUser | null }>("getProfile");
+    return data.user;
+  },
+
+  /** The signed-in user's row plus their resolved role name. */
+  getProfile: () => me<{ user: AdminUser | null; roleName: string }>("getProfile"),
+
+  updateProfile: (patch: Partial<AdminUser>) =>
+    me<{ user: AdminUser }>("updateProfile", { patch }).then((r) => r.user),
+
+  listFormsForMunicipality: (municipalityId?: number) =>
+    publicList<Form>("formsForMunicipality", { municipalityId }),
+
+  createForm: (payload: Partial<Form>) =>
+    admin<{ row: Form }>("createForm", { payload }).then((r) => r.row),
+  updateForm: (id: number, patch: Partial<Form>) =>
+    admin<{ row: Form }>("updateForm", { id, patch }).then((r) => r.row),
+  deleteForm: (id: number) => admin<void>("deleteForm", { id }).then(() => undefined),
+
+  /** All submissions for a municipality. Staff only. */
+  listSubmissions: (municipalityId: number) =>
+    admin<{ results: Submission[] }>("listSubmissions", { municipalityId }).then((r) => r.results),
 
   /**
-   * List submissions filed by a specific citizen. Used by the `/profile`
-   * "my submissions" tab — Citizens see only their own rows, enforced by
-   * the server-side `link_row_has` filter on `Submission Linked User`.
+   * The signed-in citizen's own submissions. The server scopes these to the
+   * caller; the `userId` argument is ignored.
    */
-  listSubmissionsForUser(userId: number) {
-    return list<Submission>(T.submissions, {
-      "filter__Submission Linked User__link_row_has": userId,
-    });
-  },
+  listSubmissionsForUser: (_userId?: number) =>
+    me<{ results: Submission[] }>("listSubmissions").then((r) => r.results),
 
+  /**
+   * Fetch one submission. Tries the citizen's own view first and falls back to
+   * the staff view, so both callers keep working through one method.
+   */
   async getSubmission(id: number): Promise<Submission | null> {
-    const res = await fetch(
-      `${API}/api/database/rows/table/${T.submissions}/${id}/?user_field_names=true`,
-      { headers: authHeaders() },
-    );
-    if (res.status === 404) return null;
-    if (!res.ok) throw new Error(`Submission ${id} fetch failed: ${res.status}`);
-    return (await res.json()) as Submission;
+    try {
+      const data = await me<{ row: Submission | null }>("getSubmission", { id });
+      return data.row;
+    } catch {
+      const data = await admin<{ row: Submission | null }>("getSubmission", { id });
+      return data.row;
+    }
   },
 
   updateSubmission: (id: number, patch: Partial<Submission>) =>
-    updateRow<Submission>(T.submissions, id, patch),
-  deleteSubmission: (id: number) => deleteRow(T.submissions, id),
+    admin<{ row: Submission }>("updateSubmission", { id, patch }).then((r) => r.row),
+  deleteSubmission: (id: number) => admin<void>("deleteSubmission", { id }).then(() => undefined),
 
-  // --- Profile (per-user) sub-tables ------------------------------
-  listCountries: () => list<Country>(T.countries),
-
-  listIdentityDocumentsForUser: (userId: number) =>
-    list<IdentityDocument>(T.identityDocuments, {
-      "filter__Identity Document Linked User__link_row_has": userId,
-    }),
+  // --- Profile sub-tables (own rows only, enforced server-side) -----
+  listIdentityDocumentsForUser: (_userId?: number) =>
+    me<{ results: IdentityDocument[] }>("listIdentityDocuments").then((r) => r.results),
   createIdentityDocument: (payload: Partial<IdentityDocument>) =>
-    createRow<IdentityDocument>(T.identityDocuments, payload),
+    me<{ row: IdentityDocument }>("createIdentityDocument", { payload }).then((r) => r.row),
   updateIdentityDocument: (id: number, patch: Partial<IdentityDocument>) =>
-    updateRow<IdentityDocument>(T.identityDocuments, id, patch),
-  deleteIdentityDocument: (id: number) => deleteRow(T.identityDocuments, id),
+    me<{ row: IdentityDocument }>("updateIdentityDocument", { id, patch }).then((r) => r.row),
+  deleteIdentityDocument: (id: number) =>
+    me<void>("deleteIdentityDocument", { id }).then(() => undefined),
 
-  listAddressesForUser: (userId: number) =>
-    list<Address>(T.addresses, {
-      "filter__Address Linked User__link_row_has": userId,
-    }),
-  createAddress: (payload: Partial<Address>) => createRow<Address>(T.addresses, payload),
+  listAddressesForUser: (_userId?: number) =>
+    me<{ results: Address[] }>("listAddresses").then((r) => r.results),
+  createAddress: (payload: Partial<Address>) =>
+    me<{ row: Address }>("createAddress", { payload }).then((r) => r.row),
   updateAddress: (id: number, patch: Partial<Address>) =>
-    updateRow<Address>(T.addresses, id, patch),
-  deleteAddress: (id: number) => deleteRow(T.addresses, id),
+    me<{ row: Address }>("updateAddress", { id, patch }).then((r) => r.row),
+  deleteAddress: (id: number) => me<void>("deleteAddress", { id }).then(() => undefined),
 
-  // --- Application settings (singleton row in table 2663) ----------
-  listCurrencies: () => list<Currency>(T.currencies),
-
-  /**
-   * Fetch the first (singleton) row from the Settings table. Returns null
-   * if the table is empty — the admin UI should surface this as a first-run
-   * state rather than a hard error.
-   */
+  // --- Application settings ----------------------------------------
+  /** Public read: site configuration, not personal data. */
   async getSettings(): Promise<Settings | null> {
-    const rows = await list<Settings>(T.settings, { size: 1 });
+    const rows = await publicList<Settings>("settings");
     return rows[0] ?? null;
   },
 
   updateSettings: (id: number, patch: Partial<Settings>) =>
-    updateRow<Settings>(T.settings, id, patch),
-
-  listFields: () => list<FieldDef>(T.fields),
-  listFieldTypes: () => list<FieldType>(T.fieldTypes),
-  listSections: () => list<Section>(T.sections),
-  listDictionaries: () => list<Dictionary>(T.dictionaries),
-  listDictionaryEntries: () => list<DictionaryEntry>(T.dictionaryEntries),
+    admin<{ row: Settings }>("updateSettings", { id, patch }).then((r) => r.row),
 
   /**
    * Fetch all reference tables in parallel. These are small, stable, form-agnostic
@@ -269,31 +258,6 @@ export const baserow = {
     return { fields, types, sections, dicts, entries, municipalities };
   },
 
-  /**
-   * Pull just the FormFields that belong to a specific form. Uses Baserow's
-   * server-side link-row filter so we fetch ~20 rows instead of all ~2,800.
-   */
-  listFormFieldsForForm(formId: number): Promise<FormField[]> {
-    return list<FormField>(T.formFields, {
-      "filter__Form Field Linked Form__link_row_has": formId,
-    });
-  },
-
-  async getServiceByCode(code: string): Promise<Service | null> {
-    const rows = await list<Service>(T.services, { search: code });
-    return rows.find((r) => r["Service Code"] === code) ?? null;
-  },
-
-  async getFormByCode(code: string): Promise<Form | null> {
-    const rows = await list<Form>(T.forms, { search: code });
-    return rows.find((r) => r["Form Code"] === code) ?? null;
-  },
-
-  /**
-   * Pure join: stitch pre-fetched reference data + form-specific rows into
-   * the render-ready schema. Split out so the data-fetching layer (tanstack-query)
-   * can cache each piece independently.
-   */
   buildRenderedForm(
     form: Form,
     formFields: FormField[],
@@ -401,49 +365,24 @@ export const baserow = {
   },
 
   /**
-   * Persist a submission. Creates a Submissions row + Submission Values rows.
-   * Returns the submission id so callers can pass it to the email/PDF pipeline.
+   * Persist a submission via the `submit` function, which builds the rows and
+   * validates every field code against the form being submitted.
    */
   async createSubmission(params: {
     formId: number;
     serviceId?: number;
     values: Record<string, string | boolean | number>;
   }): Promise<{ submissionId: number }> {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (TOKEN) headers.Authorization = `Token ${TOKEN}`;
-
-    const subRes = await fetch(
-      `${API}/api/database/rows/table/${T.submissions}/?user_field_names=true`,
+    return call<{ submissionId: number }>(
+      "submit",
       {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          "Submission Linked Form": [params.formId],
-          ...(params.serviceId ? { "Submission Linked Service": [params.serviceId] } : {}),
-          "Submission Status": "pending",
-          "Submission Created On": new Date().toISOString(),
-        }),
-      }
+        formId: params.formId,
+        serviceId: params.serviceId,
+        values: params.values,
+      },
+      // Anonymous submission is supported; when the citizen is signed in the
+      // server links the submission to their row.
+      "optional",
     );
-    if (!subRes.ok) throw new Error(`Submission create failed: ${subRes.status}`);
-    const submission = await subRes.json();
-    const submissionId: number = submission.id;
-
-    const valueRows = Object.entries(params.values).map(([code, value]) => ({
-      "Value Field Code": code,
-      "Value String": String(value ?? ""),
-      "Value Linked Submission": [submissionId],
-    }));
-    if (valueRows.length > 0) {
-      await fetch(
-        `${API}/api/database/rows/table/${T.submissionValues}/batch/?user_field_names=true`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ items: valueRows }),
-        }
-      );
-    }
-    return { submissionId };
   },
 };

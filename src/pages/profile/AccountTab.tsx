@@ -37,8 +37,7 @@ export default function AccountTab({ user }: { user: AdminUser }) {
 
   const mutation = useMutation({
     mutationFn: () =>
-      baserow.updateAdminUser(user.id, {
-        "User Email": email,
+      baserow.updateProfile({
         "User Phone": phone || undefined,
         "User Appear As": appearAs || undefined,
         "User Username": username || undefined,

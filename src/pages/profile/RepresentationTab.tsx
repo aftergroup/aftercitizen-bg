@@ -34,7 +34,7 @@ export default function RepresentationTab({ user }: { user: AdminUser }) {
 
   const mutation = useMutation({
     mutationFn: () =>
-      baserow.updateAdminUser(user.id, {
+      baserow.updateProfile({
         "User Is Legal Representative": isRep,
         "User Represented Person EGN": isRep ? egn || undefined : undefined,
         "User Represented Person Full Name": isRep ? fullName || undefined : undefined,

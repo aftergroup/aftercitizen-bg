@@ -65,7 +65,7 @@ export default function PersonalTab({ user }: { user: AdminUser }) {
 
   const mutation = useMutation({
     mutationFn: () =>
-      baserow.updateAdminUser(user.id, {
+      baserow.updateProfile({
         "User First Name": firstName || undefined,
         "User Middle Name": middleName || undefined,
         "User Last Name": lastName || undefined,

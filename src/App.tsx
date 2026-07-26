@@ -25,6 +25,7 @@ import ProfilePage, {
 } from "./pages/profile/ProfilePage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { AuthRoute } from "./components/AuthRoute";
+import { AuthTokenBridge } from "./components/AuthTokenBridge";
 import { UserSyncProvider } from "./hooks/useUserSync";
 import { baserow } from "./lib/baserow";
 
@@ -55,6 +56,9 @@ function Auth0ProviderWithNavigate({ children }: { children: React.ReactNode }) 
       cacheLocation="localstorage"
       useRefreshTokens={true}
     >
+      {/* Publishes the Auth0 ID token to the baserow client, which uses it
+          to authenticate calls to the me/admin Netlify Functions. */}
+      <AuthTokenBridge />
       <UserSyncProvider>{children}</UserSyncProvider>
     </Auth0Provider>
   );

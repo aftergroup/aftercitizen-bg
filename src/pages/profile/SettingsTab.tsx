@@ -41,7 +41,7 @@ export default function SettingsTab({ user }: { user: AdminUser }) {
 
   const mutation = useMutation({
     mutationFn: () =>
-      baserow.updateAdminUser(user.id, {
+      baserow.updateProfile({
         "User Preferred Delivery Method": delivery ? { value: delivery } : undefined,
         "User Marketing Opt In": marketing,
         "User Notification Opt In": notifications,

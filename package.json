@@ -9,7 +9,10 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "render:blanks": "tsx scripts/render-blank-pdfs.mts",
-    "baserow:patch": "tsx scripts/baserow-patch.mts"
+    "baserow:patch": "tsx scripts/baserow-patch.mts",
+    "prebuild": "node scripts/check-vite-env.mjs",
+    "postbuild": "node scripts/scan-dist-secrets.mjs",
+    "check:secrets": "node scripts/check-vite-env.mjs && node scripts/scan-dist-secrets.mjs"
   },
   "dependencies": {
     "@auth0/auth0-react": "^2.16.2",
@@ -24,6 +27,7 @@
     "clsx": "^2.1.1",
     "file-saver": "^2.0.5",
     "flag-icons": "^7.5.0",
+    "jose": "^5.9.6",
     "lucide-react": "^0.462.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
