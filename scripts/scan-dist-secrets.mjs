@@ -26,7 +26,14 @@ const PATTERNS = [
   { name: 'Google API key', re: /\bAIza[A-Za-z0-9_-]{30,}/g },
   { name: 'Slack token', re: /\bxox[baprs]-[A-Za-z0-9-]{10,}/g },
   { name: 'AWS access key id', re: /\bAKIA[0-9A-Z]{16}\b/g },
-  { name: 'Private key block', re: /-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----/g },
+  // Require key material after the header: auth0-spa-js bundles jose's PKCS#8
+  // importer, which contains the bare header string as a format check
+  // (`indexOf("-----BEGIN PRIVATE KEY-----")`). A real key is followed by
+  // base64, possibly after literal or escaped newlines.
+  {
+    name: 'Private key block',
+    re: /-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----(?:\s|\\[rn])*[A-Za-z0-9+/]{40,}/g,
+  },
 ];
 
 /**
